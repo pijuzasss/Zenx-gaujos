@@ -208,7 +208,24 @@ async def on_ready() -> None:
 
     for key, entry in list(state["cooldowns"].items()):
         guild_id, user_id = map(int, key.split(":"))
-        schedule_cooldown(guild_id, user_id, float(entry["expiresAt"]))
+        expires_at = float(entry["expiresAt"])
+        guild = bot.get_guild(guild_id)
+        if guild and expires_at > time.time():
+            member = guild.get_member(user_id)
+            if member is None:
+                try:
+                    member = await guild.fetch_member(user_id)
+                except discord.NotFound:
+                    member = None
+            role = guild.get_role(int(entry["roleId"]))
+            if member and role and role not in member.roles:
+                try:
+                    await member.add_roles(
+                        role, reason="Atkurtas išsaugotas 3 dienų cooldown"
+                    )
+                except discord.HTTPException as error:
+                    print(f"Nepavyko atkurti cooldown rolei {user_id}: {error}")
+        schedule_cooldown(guild_id, user_id, expires_at)
     await process_disband_jobs()
 
 
@@ -265,13 +282,36 @@ async def on_message(message: discord.Message) -> None:
             and role < bot_member.top_role
         ]
         try:
+            cooldown_role = discord.utils.get(
+                message.guild.roles, name=COOLDOWN_ROLE_NAME
+            )
+            if cooldown_role is None:
+                cooldown_role = await message.guild.create_role(
+                    name=COOLDOWN_ROLE_NAME,
+                    reason="3 dienų gaujos cooldown rolė",
+                )
+
+            expires_at = time.time() + COOLDOWN_SECONDS
+            cooldown_key = f"{message.guild.id}:{target.id}"
+            # Terminą įrašome prieš Discord pakeitimus, kad jis išliktų netikėtai išjungus botą.
+            state["cooldowns"][cooldown_key] = {
+                "roleId": str(cooldown_role.id),
+                "expiresAt": expires_at,
+            }
+            await save_state()
+
             if removable_roles:
                 await target.remove_roles(
                     *removable_roles,
                     reason=f"Iš gaujos pašalino {message.author} su @narys off",
                 )
+            await target.add_roles(
+                cooldown_role,
+                reason="3 dienų cooldown po pašalinimo iš gaujos",
+            )
+            schedule_cooldown(message.guild.id, target.id, expires_at)
             await message.reply(
-                f"{target.mention} nuimtos su {gang_role.name} gauja susijusios rolės."
+                f"{target.mention} nuimtos su {gang_role.name} gauja susijusios rolės ir uždėtas 3 dienų cooldown."
             )
         except discord.HTTPException:
             await message.reply(
