@@ -406,11 +406,11 @@ async def on_message(message: discord.Message) -> None:
             )
         return
 
-    authorized = any(
-        role_is_boss(role) or role_is_right_hand(role)
-        for role in message.author.roles
+    author_is_boss = any(role_is_boss(role) for role in message.author.roles)
+    author_is_right_hand = any(
+        role_is_right_hand(role) for role in message.author.roles
     )
-    if not authorized:
+    if not author_is_boss and not author_is_right_hand:
         await reply_panel(
             message,
             "❌ `on` komandą gali naudoti tik gaujos boss arba `des.ranka` rolę turintis narys.",
@@ -418,11 +418,11 @@ async def on_message(message: discord.Message) -> None:
         )
         return
 
-    # Boss/dešinė ranka gali valdyti tik savo gaują, net jei parašo kitos gaujos žodį.
+    # Ir boss, ir dešinė ranka gali priimti narius tik į savo gaują.
     if gang_role not in author_gang_roles:
         await reply_panel(
             message,
-            "❌ Negali priimti narių į gaują, kurios rolės pats neturi.",
+            "❌ Gali priimti narius tik į savo gaują.",
             False,
         )
         return
