@@ -21,6 +21,7 @@ GANG_TEXT = os.getenv("GANG_ROLE_TEXT", "gauja")
 BOSS_TEXT = os.getenv("BOSS_ROLE_TEXT", "boss")
 RIGHT_HAND_ROLE_NAME = os.getenv("RIGHT_HAND_ROLE_TEXT", "des.ranka")
 BLACKLIST_ROLE_NAME = os.getenv("BLACKLIST_ROLE_TEXT", "black list")
+BLACKLIST_ROLE_ID = os.getenv("BLACKLIST_ROLE_ID", "").strip()
 COOLDOWN_ROLE_NAME = os.getenv("COOLDOWN_ROLE_NAME", "3d cooldown")
 COOLDOWN_ROLE_ID = os.getenv("COOLDOWN_ROLE_ID", "").strip()
 COOLDOWN_SECONDS = float(os.getenv("COOLDOWN_HOURS", "72")) * 3600
@@ -58,7 +59,15 @@ def normalize(text: str) -> str:
         "abcdefghijklmnopqrstuvwxyz",
     )
     decomposed = unicodedata.normalize("NFKD", text.casefold()).translate(small_caps)
-    return "".join(char for char in decomposed if not unicodedata.combining(char))
+    result = []
+    for char in decomposed:
+        codepoint = ord(char)
+        # Discord rolėse naudojamos 🇦–🇿 regional-indicator raidės.
+        if 0x1F1E6 <= codepoint <= 0x1F1FF:
+            result.append(chr(ord("a") + codepoint - 0x1F1E6))
+        elif not unicodedata.combining(char):
+            result.append(char)
+    return "".join(result)
 
 
 def role_is_boss(role: discord.Role) -> bool:
@@ -73,6 +82,14 @@ def role_is_boss(role: discord.Role) -> bool:
 
 def role_is_right_hand(role: discord.Role) -> bool:
     return normalize(RIGHT_HAND_ROLE_NAME) in normalize(role.name)
+
+
+def role_is_blacklist(role: discord.Role) -> bool:
+    if BLACKLIST_ROLE_ID.isdigit() and role.id == int(BLACKLIST_ROLE_ID):
+        return True
+    configured = compact(BLACKLIST_ROLE_NAME)
+    role_name = compact(role.name)
+    return (configured and configured in role_name) or "blacklist" in role_name
 
 
 COLOR_ALIASES = {
@@ -325,15 +342,32 @@ async def on_ready() -> None:
                 except discord.NotFound:
                     member = None
             role = guild.get_role(int(entry["roleId"]))
-            if member and role and role not in member.roles:
-                try:
-                    await member.add_roles(
-                        role, reason="Atkurtas išsaugotas 3 dienų cooldown"
-                    )
-                except discord.HTTPException as error:
-                    print(f"Nepavyko atkurti cooldown rolei {user_id}: {error}")
+            if member and (role is None or role not in member.roles):
+                # Rolę rankiniu būdu nuėmė administratorius – termino neatkuriame.
+                state["cooldowns"].pop(key, None)
+                await save_state()
+                continue
         schedule_cooldown(guild_id, user_id, expires_at)
     await process_disband_jobs()
+
+
+@bot.event
+async def on_member_update(before: discord.Member, after: discord.Member) -> None:
+    key = f"{after.guild.id}:{after.id}"
+    entry = state["cooldowns"].get(key)
+    if not entry:
+        return
+
+    cooldown_role_id = int(entry["roleId"])
+    before_ids = {role.id for role in before.roles}
+    after_ids = {role.id for role in after.roles}
+    if cooldown_role_id in before_ids and cooldown_role_id not in after_ids:
+        state["cooldowns"].pop(key, None)
+        task = cooldown_tasks.pop(key, None)
+        if task:
+            task.cancel()
+        await save_state()
+        print(f"Cooldown rankiniu būdu atšauktas nariui {after}.")
 
 
 @bot.event
@@ -487,16 +521,33 @@ async def on_message(message: discord.Message) -> None:
         return
 
     cooldown_role = find_cooldown_role(message.guild)
-    cooldown_entry = state["cooldowns"].get(f"{message.guild.id}:{target.id}")
-    if (cooldown_role and cooldown_role in target.roles) or (
-        cooldown_entry and float(cooldown_entry["expiresAt"]) > time.time()
-    ):
+    cooldown_key = f"{message.guild.id}:{target.id}"
+    cooldown_entry = state["cooldowns"].get(cooldown_key)
+    saved_cooldown_role = None
+    if cooldown_entry:
+        saved_cooldown_role = message.guild.get_role(int(cooldown_entry["roleId"]))
+
+    has_cooldown_role = bool(
+        (cooldown_role and cooldown_role in target.roles)
+        or (saved_cooldown_role and saved_cooldown_role in target.roles)
+    )
+
+    # Jei adminas rankiniu būdu nuėmė rolę, laikome cooldown atšauktu ir
+    # pašaliname seną terminą, kad jis nebūtų atkurtas po Railway deploy.
+    if cooldown_entry and not has_cooldown_role:
+        state["cooldowns"].pop(cooldown_key, None)
+        cooldown_task = cooldown_tasks.pop(cooldown_key, None)
+        if cooldown_task:
+            cooldown_task.cancel()
+        await save_state()
+        cooldown_entry = None
+
+    if has_cooldown_role:
         await reply_panel(message, "❌ Šiam nariui dar aktyvus 3 dienų cooldown.", False)
         return
 
-    blacklist_text = normalize(BLACKLIST_ROLE_NAME)
     blacklist_role = discord.utils.find(
-        lambda role: blacklist_text in normalize(role.name), target.roles
+        role_is_blacklist, target.roles
     )
     if blacklist_role:
         await reply_panel(message, "❌ Šis narys turi black list rolę.", False)
