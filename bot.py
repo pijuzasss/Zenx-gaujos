@@ -75,6 +75,54 @@ def role_is_right_hand(role: discord.Role) -> bool:
     return normalize(RIGHT_HAND_ROLE_NAME) in normalize(role.name)
 
 
+COLOR_ALIASES = {
+    "rozine": "roziniai",
+    "rozinis": "roziniai",
+    "raudona": "raudoni",
+    "raudonas": "raudoni",
+    "balti": "balta",
+    "baltas": "balta",
+    "smeline": "smeliniai",
+    "smelinis": "smeliniai",
+    "tmelyna": "tmelyni",
+    "melyni": "tmelyni",
+    "melyna": "tmelyni",
+    "tamsiai-melyni": "tmelyni",
+    "tamsiai-melyna": "tmelyni",
+    "pilka": "pilki",
+    "pilkas": "pilki",
+    "zali": "zalia",
+    "zalias": "zalia",
+    "juodi": "juoda",
+    "juodas": "juoda",
+    "violetine": "violetine",
+    "oranzine": "oranziniai",
+    "oranzinis": "oranziniai",
+    "auksine": "auksiniai",
+    "auksinis": "auksiniai",
+    "bordine": "boordine",
+    "bordo": "boordine",
+    "ruda": "rudi",
+    "rudas": "rudi",
+    "tzali": "tzalia",
+    "tamsiai-zalia": "tzalia",
+    "tamsiai-zali": "tzalia",
+    "dzinsine": "dzinsiniai",
+    "dzinsinis": "dzinsiniai",
+}
+
+
+def compact(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", normalize(text))
+
+
+def keyword_matches_role(keyword: str, role: discord.Role) -> bool:
+    normalized_keyword = normalize(keyword)
+    alias = COLOR_ALIASES.get(normalized_keyword, normalized_keyword)
+    role_name = compact(role.name)
+    return compact(alias) in role_name or compact(normalized_keyword) in role_name
+
+
 def find_cooldown_role(guild: discord.Guild) -> discord.Role | None:
     if COOLDOWN_ROLE_ID.isdigit():
         role = guild.get_role(int(COOLDOWN_ROLE_ID))
@@ -322,12 +370,23 @@ async def on_message(message: discord.Message) -> None:
 
     gang_role = None
     if gang_keywords:
+        # Pirmiausia renkamės autoriaus turimą gaują – taip nepasirenkama svetima
+        # panašaus pavadinimo rolė iš bendro serverio rolių sąrašo.
         gang_role = discord.utils.find(
-            lambda role: normalize(GANG_TEXT) in normalize(role.name)
-            and not role_is_boss(role)
-            and all(keyword in normalize(role.name) for keyword in gang_keywords),
-            message.guild.roles,
+            lambda role: all(
+                keyword_matches_role(keyword, role) for keyword in gang_keywords
+            ),
+            author_gang_roles,
         )
+        if gang_role is None:
+            gang_role = discord.utils.find(
+                lambda role: normalize(GANG_TEXT) in normalize(role.name)
+                and not role_is_boss(role)
+                and all(
+                    keyword_matches_role(keyword, role) for keyword in gang_keywords
+                ),
+                message.guild.roles,
+            )
         if gang_role is None:
             await reply_panel(
                 message,
