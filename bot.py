@@ -22,6 +22,7 @@ BOSS_TEXT = os.getenv("BOSS_ROLE_TEXT", "boss")
 RIGHT_HAND_ROLE_NAME = os.getenv("RIGHT_HAND_ROLE_TEXT", "des.ranka")
 BLACKLIST_ROLE_NAME = os.getenv("BLACKLIST_ROLE_TEXT", "black list")
 COOLDOWN_ROLE_NAME = os.getenv("COOLDOWN_ROLE_NAME", "3d cooldown")
+COOLDOWN_ROLE_ID = os.getenv("COOLDOWN_ROLE_ID", "").strip()
 COOLDOWN_SECONDS = float(os.getenv("COOLDOWN_HOURS", "72")) * 3600
 
 placeholders = {
@@ -52,8 +53,66 @@ OLD_DATA_FILE = DATA_DIRECTORY / "cooldowns.json"
 
 
 def normalize(text: str) -> str:
-    decomposed = unicodedata.normalize("NFD", text.lower())
+    small_caps = str.maketrans(
+        "ᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘǫʀꜱᴛᴜᴠᴡxʏᴢ",
+        "abcdefghijklmnopqrstuvwxyz",
+    )
+    decomposed = unicodedata.normalize("NFKD", text.casefold()).translate(small_caps)
     return "".join(char for char in decomposed if not unicodedata.combining(char))
+
+
+def role_is_boss(role: discord.Role) -> bool:
+    name = normalize(role.name)
+    return (
+        normalize(BOSS_TEXT) in name
+        or "boss" in name
+        or "bosas" in name
+        or "boso" in name
+    )
+
+
+def role_is_right_hand(role: discord.Role) -> bool:
+    return normalize(RIGHT_HAND_ROLE_NAME) in normalize(role.name)
+
+
+def find_cooldown_role(guild: discord.Guild) -> discord.Role | None:
+    if COOLDOWN_ROLE_ID.isdigit():
+        role = guild.get_role(int(COOLDOWN_ROLE_ID))
+        if role:
+            return role
+
+    configured = normalize(COOLDOWN_ROLE_NAME)
+    exact = discord.utils.find(
+        lambda role: normalize(role.name) == configured, guild.roles
+    )
+    if exact:
+        return exact
+
+    # Atpažįsta ir stilizuotus pavadinimus, pvz. „﹒ᴄᴏᴏʟᴅᴏᴡɴ 3D“.
+    return discord.utils.find(
+        lambda role: "cooldown" in normalize(role.name)
+        and ("3d" in normalize(role.name) or "3 d" in normalize(role.name)),
+        guild.roles,
+    )
+
+
+async def get_or_create_cooldown_role(guild: discord.Guild) -> discord.Role:
+    role = find_cooldown_role(guild)
+    if role:
+        return role
+    return await guild.create_role(
+        name=COOLDOWN_ROLE_NAME, reason="3 dienų gaujos cooldown rolė"
+    )
+
+
+async def reply_panel(
+    message: discord.Message, text: str, success: bool = True
+) -> discord.Message:
+    embed = discord.Embed(
+        description=text,
+        color=discord.Color.green() if success else discord.Color.red(),
+    )
+    return await message.reply(embed=embed, mention_author=False)
 
 
 def load_state() -> dict:
@@ -233,45 +292,77 @@ async def on_ready() -> None:
 async def on_message(message: discord.Message) -> None:
     if not message.guild or message.author.bot:
         return
-    command_match = re.search(
-        r"(?:^|\s)(on|off)(?:\s+(des|desine))?\s*$",
-        normalize(message.content),
-    )
-    if not command_match or not message.mentions:
+    if not message.mentions:
         return
     if not isinstance(message.author, discord.Member):
         return
 
+    command_text = re.sub(r"<@!?\d+>", " ", normalize(message.content))
+    words = re.findall(r"[a-z0-9_.-]+", command_text)
+    if "on" in words:
+        action = "on"
+    elif "off" in words:
+        action = "off"
+    else:
+        return
+
     target = message.mentions[0]
-    gang_roles = [
+    right_hand_requested = action == "on" and any(
+        word in {"des", "desine"} for word in words
+    )
+    ignored_words = {"on", "off", "des", "desine"}
+    gang_keywords = [word for word in words if word not in ignored_words]
+
+    author_gang_roles = [
         role
         for role in message.author.roles
         if normalize(GANG_TEXT) in normalize(role.name)
-        and normalize(BOSS_TEXT) not in normalize(role.name)
+        and not role_is_boss(role)
     ]
-    if not gang_roles:
-        await message.reply("Tavo profilyje neradau gaujos rolės (boss rolė netinka).")
-        return
-    gang_role = max(gang_roles, key=lambda role: role.position)
 
-    action = command_match.group(1)
+    gang_role = None
+    if gang_keywords:
+        gang_role = discord.utils.find(
+            lambda role: normalize(GANG_TEXT) in normalize(role.name)
+            and not role_is_boss(role)
+            and all(keyword in normalize(role.name) for keyword in gang_keywords),
+            message.guild.roles,
+        )
+        if gang_role is None:
+            await reply_panel(
+                message,
+                f"❌ Neradau gaujos rolės pagal pavadinimą `{ ' '.join(gang_keywords) }`.",
+                False,
+            )
+            return
+    elif author_gang_roles:
+        gang_role = max(author_gang_roles, key=lambda role: role.position)
+
+    if gang_role is None:
+        await reply_panel(
+            message,
+            "❌ Neradau gaujos rolės. Parašyk gaujos pavadinimą, pvz. `@narys on raudoni`.",
+            False,
+        )
+        return
+
     if action == "off":
         # Svetimos gaujos vadovas ar dešinė ranka negali nuimti kitos gaujos rolių.
         if gang_role not in target.roles:
-            await message.reply(
-                "Šis narys neturi tokios pačios gaujos rolės, todėl niekas nebuvo nuimta."
+            await reply_panel(
+                message,
+                "❌ Šis narys neturi tokios pačios gaujos rolės, todėl niekas nebuvo nuimta.",
+                False,
             )
             return
 
-        boss_text = normalize(BOSS_TEXT)
-        right_hand_text = normalize(RIGHT_HAND_ROLE_NAME)
         bot_member = message.guild.me
         related_roles = [
             role
             for role in target.roles
             if role == gang_role
-            or boss_text in normalize(role.name)
-            or right_hand_text in normalize(role.name)
+            or role_is_boss(role)
+            or role_is_right_hand(role)
         ]
         removable_roles = [
             role
@@ -282,14 +373,7 @@ async def on_message(message: discord.Message) -> None:
             and role < bot_member.top_role
         ]
         try:
-            cooldown_role = discord.utils.get(
-                message.guild.roles, name=COOLDOWN_ROLE_NAME
-            )
-            if cooldown_role is None:
-                cooldown_role = await message.guild.create_role(
-                    name=COOLDOWN_ROLE_NAME,
-                    reason="3 dienų gaujos cooldown rolė",
-                )
+            cooldown_role = await get_or_create_cooldown_role(message.guild)
 
             expires_at = time.time() + COOLDOWN_SECONDS
             cooldown_key = f"{message.guild.id}:{target.id}"
@@ -310,21 +394,45 @@ async def on_message(message: discord.Message) -> None:
                 reason="3 dienų cooldown po pašalinimo iš gaujos",
             )
             schedule_cooldown(message.guild.id, target.id, expires_at)
-            await message.reply(
-                f"{target.mention} nuimtos su {gang_role.name} gauja susijusios rolės ir uždėtas 3 dienų cooldown."
+            await reply_panel(
+                message,
+                f"✅ {target.mention} pašalintas iš {gang_role.mention} ir gavo 3 dienų cooldown.",
             )
         except discord.HTTPException:
-            await message.reply(
-                "Nepavyko nuimti rolių. Patikrink boto teises ir rolių hierarchiją."
+            await reply_panel(
+                message,
+                "❌ Nepavyko pakeisti rolių. Patikrink boto teises ir rolių hierarchiją.",
+                False,
             )
         return
 
-    cooldown_role = discord.utils.get(message.guild.roles, name=COOLDOWN_ROLE_NAME)
+    authorized = any(
+        role_is_boss(role) or role_is_right_hand(role)
+        for role in message.author.roles
+    )
+    if not authorized:
+        await reply_panel(
+            message,
+            "❌ `on` komandą gali naudoti tik gaujos boss arba `des.ranka` rolę turintis narys.",
+            False,
+        )
+        return
+
+    # Boss/dešinė ranka gali valdyti tik savo gaują, net jei parašo kitos gaujos žodį.
+    if gang_role not in author_gang_roles:
+        await reply_panel(
+            message,
+            "❌ Negali priimti narių į gaują, kurios rolės pats neturi.",
+            False,
+        )
+        return
+
+    cooldown_role = find_cooldown_role(message.guild)
     cooldown_entry = state["cooldowns"].get(f"{message.guild.id}:{target.id}")
     if (cooldown_role and cooldown_role in target.roles) or (
         cooldown_entry and float(cooldown_entry["expiresAt"]) > time.time()
     ):
-        await message.reply("Šiam nariui dar aktyvus 3 dienų gaujos cooldown.")
+        await reply_panel(message, "❌ Šiam nariui dar aktyvus 3 dienų cooldown.", False)
         return
 
     blacklist_text = normalize(BLACKLIST_ROLE_NAME)
@@ -332,7 +440,7 @@ async def on_message(message: discord.Message) -> None:
         lambda role: blacklist_text in normalize(role.name), target.roles
     )
     if blacklist_role:
-        await message.reply("Šis narys turi black list rolę, todėl jam rolės nebus uždėtos.")
+        await reply_panel(message, "❌ Šis narys turi black list rolę.", False)
         return
 
     target_gang_roles = [
@@ -343,17 +451,19 @@ async def on_message(message: discord.Message) -> None:
     ]
     different_gang_roles = [role for role in target_gang_roles if role != gang_role]
     if different_gang_roles:
-        await message.reply(
-            "Šis narys jau turi kitos gaujos rolę, todėl jam nieko neuždėjau."
+        await reply_panel(
+            message,
+            "❌ Šis narys jau turi kitos gaujos rolę, todėl jam nieko neuždėjau.",
+            False,
         )
         return
 
-    if not command_match.group(2) and gang_role in target.roles:
-        await message.reply(f"{target.mention} jau turi {gang_role.mention} rolę.")
+    if not right_hand_requested and gang_role in target.roles:
+        await reply_panel(message, f"❌ {target.mention} jau turi {gang_role.mention} rolę.", False)
         return
 
     roles_to_add = [gang_role]
-    if command_match.group(2):
+    if right_hand_requested:
         configured_name = normalize(RIGHT_HAND_ROLE_NAME)
         right_hand_role = discord.utils.find(
             lambda role: normalize(role.name) == configured_name,
@@ -365,8 +475,10 @@ async def on_message(message: discord.Message) -> None:
                 message.guild.roles,
             )
         if right_hand_role is None:
-            await message.reply(
-                f"Neradau `{RIGHT_HAND_ROLE_NAME}` rolės. Patikrink RIGHT_HAND_ROLE_TEXT reikšmę .env faile."
+            await reply_panel(
+                message,
+                f"❌ Neradau `{RIGHT_HAND_ROLE_NAME}` rolės.",
+                False,
             )
             return
         # Jei gaujos dar neturi – uždedame gaują ir dešinę ranką; jei turi tą pačią – tik dešinę ranką.
@@ -379,9 +491,16 @@ async def on_message(message: discord.Message) -> None:
             *roles_to_add, reason=f"Roles paskyrė {message.author} su on komanda"
         )
         role_mentions = ", ".join(role.mention for role in roles_to_add)
-        await message.reply(f"{target.mention} uždėtos rolės: {role_mentions}.")
+        await reply_panel(
+            message,
+            f"✅ {target.mention} sėkmingai pridėtas į {role_mentions}.",
+        )
     except discord.HTTPException:
-        await message.reply("Nepavyko uždėti rolės. Patikrink boto teises ir rolių hierarchiją.")
+        await reply_panel(
+            message,
+            "❌ Nepavyko uždėti rolės. Patikrink boto teises ir rolių hierarchiją.",
+            False,
+        )
 
 
 async def handle_disband(interaction: discord.Interaction, gauja: discord.Role) -> None:
@@ -396,11 +515,7 @@ async def handle_disband(interaction: discord.Interaction, gauja: discord.Role) 
         await interaction.followup.send("Šios rolės negalima išformuoti.", ephemeral=True)
         return
 
-    cooldown_role = discord.utils.get(guild.roles, name=COOLDOWN_ROLE_NAME)
-    if cooldown_role is None:
-        cooldown_role = await guild.create_role(
-            name=COOLDOWN_ROLE_NAME, reason="3 dienų gaujos cooldown rolė"
-        )
+    cooldown_role = await get_or_create_cooldown_role(guild)
 
     # Užkrauname visus serverio narius, kad disband nepraleistų necache'intų narių.
     await guild.chunk(cache=True)
