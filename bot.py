@@ -95,37 +95,67 @@ def role_is_blacklist(role: discord.Role) -> bool:
 COLOR_ALIASES = {
     "rozine": "roziniai",
     "rozinis": "roziniai",
+    "roziniu": "roziniai",
+    "roziniams": "roziniai",
     "raudona": "raudoni",
     "raudonas": "raudoni",
+    "raudonu": "raudoni",
+    "raudoniesiems": "raudoni",
     "balti": "balta",
     "baltas": "balta",
+    "baltieji": "balta",
+    "baltu": "balta",
     "smeline": "smeliniai",
     "smelinis": "smeliniai",
+    "smeliniu": "smeliniai",
     "tmelyna": "tmelyni",
     "melyni": "tmelyni",
     "melyna": "tmelyni",
+    "melynas": "tmelyni",
+    "melynu": "tmelyni",
     "tamsiai-melyni": "tmelyni",
     "tamsiai-melyna": "tmelyni",
+    "tamsiaimelyni": "tmelyni",
+    "tamsiaimelyna": "tmelyni",
     "pilka": "pilki",
     "pilkas": "pilki",
+    "pilku": "pilki",
     "zali": "zalia",
     "zalias": "zalia",
+    "zaliu": "zalia",
     "juodi": "juoda",
     "juodas": "juoda",
+    "juodu": "juoda",
+    "zydras": "zydra",
+    "zydri": "zydra",
+    "zydru": "zydra",
     "violetine": "violetine",
+    "violetiniai": "violetine",
+    "violetinis": "violetine",
+    "violetineje": "violetine",
+    "violetiniu": "violetine",
     "oranzine": "oranziniai",
     "oranzinis": "oranziniai",
+    "oranziniu": "oranziniai",
     "auksine": "auksiniai",
     "auksinis": "auksiniai",
+    "auksiniu": "auksiniai",
     "bordine": "boordine",
     "bordo": "boordine",
+    "boordiniai": "boordine",
+    "boordinis": "boordine",
     "ruda": "rudi",
     "rudas": "rudi",
+    "rudu": "rudi",
     "tzali": "tzalia",
+    "tzalias": "tzalia",
     "tamsiai-zalia": "tzalia",
     "tamsiai-zali": "tzalia",
+    "tamsiaizalia": "tzalia",
+    "tamsiaizali": "tzalia",
     "dzinsine": "dzinsiniai",
     "dzinsinis": "dzinsiniai",
+    "dzinsiniu": "dzinsiniai",
 }
 
 
@@ -138,6 +168,14 @@ def keyword_matches_role(keyword: str, role: discord.Role) -> bool:
     alias = COLOR_ALIASES.get(normalized_keyword, normalized_keyword)
     role_name = compact(role.name)
     return compact(alias) in role_name or compact(normalized_keyword) in role_name
+
+
+def keywords_match_role(keywords: list[str], role: discord.Role) -> bool:
+    if all(keyword_matches_role(keyword, role) for keyword in keywords):
+        return True
+    # Atpažįsta ir dviejų žodžių formas, pvz. „tamsiai zalia“.
+    joined = "".join(compact(keyword) for keyword in keywords)
+    return keyword_matches_role(joined, role)
 
 
 def find_cooldown_role(guild: discord.Guild) -> discord.Role | None:
@@ -407,18 +445,14 @@ async def on_message(message: discord.Message) -> None:
         # Pirmiausia renkamės autoriaus turimą gaują – taip nepasirenkama svetima
         # panašaus pavadinimo rolė iš bendro serverio rolių sąrašo.
         gang_role = discord.utils.find(
-            lambda role: all(
-                keyword_matches_role(keyword, role) for keyword in gang_keywords
-            ),
+            lambda role: keywords_match_role(gang_keywords, role),
             author_gang_roles,
         )
         if gang_role is None:
             gang_role = discord.utils.find(
                 lambda role: normalize(GANG_TEXT) in normalize(role.name)
                 and not role_is_boss(role)
-                and all(
-                    keyword_matches_role(keyword, role) for keyword in gang_keywords
-                ),
+                and keywords_match_role(gang_keywords, role),
                 message.guild.roles,
             )
         if gang_role is None:
