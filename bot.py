@@ -224,13 +224,14 @@ def load_state() -> dict:
         return {
             "cooldowns": parsed.get("cooldowns", {}),
             "disbandJobs": parsed.get("disbandJobs", {}),
+            "blacklists": parsed.get("blacklists", {}),
         }
     except (FileNotFoundError, json.JSONDecodeError):
         try:
             old = json.loads(OLD_DATA_FILE.read_text(encoding="utf-8"))
-            return {"cooldowns": old, "disbandJobs": {}}
+            return {"cooldowns": old, "disbandJobs": {}, "blacklists": {}}
         except (FileNotFoundError, json.JSONDecodeError):
-            return {"cooldowns": {}, "disbandJobs": {}}
+            return {"cooldowns": {}, "disbandJobs": {}, "blacklists": {}}
 
 
 state = load_state()
@@ -390,8 +391,63 @@ async def on_ready() -> None:
 
 
 @bot.event
+async def on_member_remove(member: discord.Member) -> None:
+    """Išsaugo tik apsaugines roles; gaujos ir kitos rolės nėra saugomos."""
+    key = f"{member.guild.id}:{member.id}"
+    blacklist_role = discord.utils.find(role_is_blacklist, member.roles)
+    if blacklist_role:
+        state["blacklists"][key] = {"roleId": str(blacklist_role.id)}
+    else:
+        state["blacklists"].pop(key, None)
+    await save_state()
+
+
+@bot.event
+async def on_member_join(member: discord.Member) -> None:
+    key = f"{member.guild.id}:{member.id}"
+    roles_to_restore = []
+
+    blacklist_entry = state["blacklists"].get(key)
+    if blacklist_entry:
+        blacklist_role = member.guild.get_role(int(blacklist_entry["roleId"]))
+        if blacklist_role is None:
+            blacklist_role = discord.utils.find(role_is_blacklist, member.guild.roles)
+        if blacklist_role:
+            roles_to_restore.append(blacklist_role)
+
+    cooldown_entry = state["cooldowns"].get(key)
+    if cooldown_entry:
+        expires_at = float(cooldown_entry["expiresAt"])
+        if expires_at > time.time():
+            cooldown_role = member.guild.get_role(int(cooldown_entry["roleId"]))
+            if cooldown_role is None:
+                cooldown_role = find_cooldown_role(member.guild)
+            if cooldown_role:
+                roles_to_restore.append(cooldown_role)
+                schedule_cooldown(member.guild.id, member.id, expires_at)
+        else:
+            state["cooldowns"].pop(key, None)
+            await save_state()
+
+    if roles_to_restore:
+        try:
+            await member.add_roles(
+                *roles_to_restore,
+                reason="Atkurtos BLACKLIST / cooldown rolės nariui sugrįžus",
+            )
+        except discord.HTTPException as error:
+            print(f"Nepavyko atkurti rolių sugrįžusiam nariui {member}: {error}")
+
+
+@bot.event
 async def on_member_update(before: discord.Member, after: discord.Member) -> None:
     key = f"{after.guild.id}:{after.id}"
+    before_blacklisted = any(role_is_blacklist(role) for role in before.roles)
+    after_blacklisted = any(role_is_blacklist(role) for role in after.roles)
+    if before_blacklisted and not after_blacklisted:
+        state["blacklists"].pop(key, None)
+        await save_state()
+
     entry = state["cooldowns"].get(key)
     if not entry:
         return
