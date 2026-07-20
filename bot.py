@@ -178,6 +178,14 @@ def keywords_match_role(keywords: list[str], role: discord.Role) -> bool:
     return keyword_matches_role(joined, role)
 
 
+def role_display_name(role: discord.Role) -> str:
+    """Gaujos rolę rodo kaip tekstą „Gauja11“, jos nepažymėdamas."""
+    gang_number = re.search(r"gauja\s*(\d+)", normalize(role.name))
+    if gang_number:
+        return f"Gauja{gang_number.group(1)}"
+    return role.name
+
+
 def find_cooldown_role(guild: discord.Guild) -> discord.Role | None:
     if COOLDOWN_ROLE_ID.isdigit():
         role = guild.get_role(int(COOLDOWN_ROLE_ID))
@@ -690,10 +698,10 @@ async def on_message(message: discord.Message) -> None:
         await target.add_roles(
             *roles_to_add, reason=f"Roles paskyrė {message.author} su on komanda"
         )
-        role_mentions = ", ".join(role.mention for role in roles_to_add)
+        role_names = ", ".join(role_display_name(role) for role in roles_to_add)
         await reply_panel(
             message,
-            f"✅ {target.mention} sėkmingai pridėtas į {role_mentions}.",
+            f"✅ {target.mention} sėkmingai pridėtas į {role_names}.",
         )
     except discord.HTTPException:
         await reply_panel(
