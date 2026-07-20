@@ -762,5 +762,4 @@ async def disban(interaction: discord.Interaction, gauja: discord.Role) -> None:
 
 
 bot.tree.add_command(disband)
-bot.tree.add_command(disban)
 bot.run(TOKEN)
