@@ -233,13 +233,24 @@ def load_state() -> dict:
             "cooldowns": parsed.get("cooldowns", {}),
             "disbandJobs": parsed.get("disbandJobs", {}),
             "blacklists": parsed.get("blacklists", {}),
+            "gangLeavers": parsed.get("gangLeavers", {}),
         }
     except (FileNotFoundError, json.JSONDecodeError):
         try:
             old = json.loads(OLD_DATA_FILE.read_text(encoding="utf-8"))
-            return {"cooldowns": old, "disbandJobs": {}, "blacklists": {}}
+            return {
+                "cooldowns": old,
+                "disbandJobs": {},
+                "blacklists": {},
+                "gangLeavers": {},
+            }
         except (FileNotFoundError, json.JSONDecodeError):
-            return {"cooldowns": {}, "disbandJobs": {}, "blacklists": {}}
+            return {
+                "cooldowns": {},
+                "disbandJobs": {},
+                "blacklists": {},
+                "gangLeavers": {},
+            }
 
 
 state = load_state()
@@ -407,6 +418,20 @@ async def on_member_remove(member: discord.Member) -> None:
         state["blacklists"][key] = {"roleId": str(blacklist_role.id)}
     else:
         state["blacklists"].pop(key, None)
+
+    gang_roles = [
+        role
+        for role in member.roles
+        if normalize(GANG_TEXT) in normalize(role.name)
+        and not role_is_boss(role)
+    ]
+    if gang_roles:
+        state["gangLeavers"][key] = {
+            "gangRoleIds": [str(role.id) for role in gang_roles],
+            "leftAt": time.time(),
+        }
+    else:
+        state["gangLeavers"].pop(key, None)
     await save_state()
 
 
@@ -424,18 +449,34 @@ async def on_member_join(member: discord.Member) -> None:
             roles_to_restore.append(blacklist_role)
 
     cooldown_entry = state["cooldowns"].get(key)
+    left_with_gang = key in state["gangLeavers"]
+    if cooldown_entry and float(cooldown_entry["expiresAt"]) <= time.time():
+        state["cooldowns"].pop(key, None)
+        cooldown_entry = None
+        await save_state()
+
+    if left_with_gang and not cooldown_entry:
+        cooldown_role = await get_or_create_cooldown_role(member.guild)
+        expires_at = time.time() + COOLDOWN_SECONDS
+        cooldown_entry = {
+            "roleId": str(cooldown_role.id),
+            "expiresAt": expires_at,
+        }
+        state["cooldowns"][key] = cooldown_entry
+        await save_state()
+
     if cooldown_entry:
         expires_at = float(cooldown_entry["expiresAt"])
-        if expires_at > time.time():
-            cooldown_role = member.guild.get_role(int(cooldown_entry["roleId"]))
-            if cooldown_role is None:
-                cooldown_role = find_cooldown_role(member.guild)
-            if cooldown_role:
-                roles_to_restore.append(cooldown_role)
-                schedule_cooldown(member.guild.id, member.id, expires_at)
-        else:
-            state["cooldowns"].pop(key, None)
-            await save_state()
+        cooldown_role = member.guild.get_role(int(cooldown_entry["roleId"]))
+        if cooldown_role is None:
+            cooldown_role = find_cooldown_role(member.guild)
+        if cooldown_role:
+            roles_to_restore.append(cooldown_role)
+            schedule_cooldown(member.guild.id, member.id, expires_at)
+
+    if left_with_gang:
+        state["gangLeavers"].pop(key, None)
+        await save_state()
 
     if roles_to_restore:
         try:
