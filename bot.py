@@ -1042,16 +1042,20 @@ async def send_ticket_panel(
     support_role="Darbuotojų rolė, kuri matys ir atsakys į ticketus",
     banner="Pagalbos centro bannerio paveikslėlis",
 )
-@app_commands.default_permissions(manage_channels=True)
 @app_commands.guilds(discord.Object(id=GUILD_ID))
 async def setup_tickets(
     interaction: discord.Interaction,
     support_role: discord.Role,
     banner: discord.Attachment,
 ) -> None:
-    if not interaction.permissions.manage_channels:
+    if not (
+        interaction.permissions.manage_channels
+        or interaction.permissions.manage_roles
+        or interaction.permissions.administrator
+    ):
         await interaction.response.send_message(
-            "Šiai komandai reikia Manage Channels teisės.", ephemeral=True
+            "Šiai komandai reikia Manage Channels arba Manage Roles teisės.",
+            ephemeral=True,
         )
         return
     if not banner.content_type or not banner.content_type.startswith("image/"):
@@ -1132,7 +1136,6 @@ async def setup_tickets(
     support_role="Darbuotojų rolė, kuri matys ir atsakys į ticketus",
     banner="Pagalbos centro bannerio paveikslėlis",
 )
-@app_commands.default_permissions(manage_channels=True)
 @app_commands.guilds(discord.Object(id=GUILD_ID))
 async def setup(
     interaction: discord.Interaction,
