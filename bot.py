@@ -258,6 +258,12 @@ def safe_channel_part(text: str) -> str:
 
 
 async def get_ticket_category(guild: discord.Guild) -> discord.CategoryChannel:
+    saved_config = state.get("ticketConfigs", {}).get(str(guild.id), {})
+    saved_category_id = str(saved_config.get("categoryId", ""))
+    if saved_category_id.isdigit():
+        channel = guild.get_channel(int(saved_category_id))
+        if isinstance(channel, discord.CategoryChannel):
+            return channel
     if TICKET_CATEGORY_ID.isdigit():
         channel = guild.get_channel(int(TICKET_CATEGORY_ID))
         if isinstance(channel, discord.CategoryChannel):
@@ -268,6 +274,18 @@ async def get_ticket_category(guild: discord.Guild) -> discord.CategoryChannel:
     if existing:
         return existing
     return await guild.create_category("TICKETS", reason="Ticket sistemos kategorija")
+
+
+def get_ticket_support_role(guild: discord.Guild) -> discord.Role | None:
+    saved_config = state.get("ticketConfigs", {}).get(str(guild.id), {})
+    saved_role_id = str(saved_config.get("supportRoleId", ""))
+    if saved_role_id.isdigit():
+        role = guild.get_role(int(saved_role_id))
+        if role:
+            return role
+    if TICKET_SUPPORT_ROLE_ID.isdigit():
+        return guild.get_role(int(TICKET_SUPPORT_ROLE_ID))
+    return None
 
 
 class TicketCloseView(discord.ui.View):
@@ -294,9 +312,7 @@ class TicketCloseView(discord.ui.View):
         owner_match = re.search(r"ticket-owner:(\d+)", channel.topic)
         is_owner = bool(owner_match and int(owner_match.group(1)) == interaction.user.id)
         support_role = (
-            interaction.guild.get_role(int(TICKET_SUPPORT_ROLE_ID))
-            if interaction.guild and TICKET_SUPPORT_ROLE_ID.isdigit()
-            else None
+            get_ticket_support_role(interaction.guild) if interaction.guild else None
         )
         is_support = bool(
             isinstance(interaction.user, discord.Member)
@@ -372,11 +388,7 @@ class TicketTypeSelect(discord.ui.Select):
         ticket_type = self.values[0]
         title, description, channel_prefix = TICKET_TYPES[ticket_type]
         category = await get_ticket_category(guild)
-        support_role = (
-            guild.get_role(int(TICKET_SUPPORT_ROLE_ID))
-            if TICKET_SUPPORT_ROLE_ID.isdigit()
-            else None
-        )
+        support_role = get_ticket_support_role(guild)
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
             interaction.user: discord.PermissionOverwrite(
@@ -437,6 +449,7 @@ def load_state() -> dict:
             "disbandJobs": parsed.get("disbandJobs", {}),
             "blacklists": parsed.get("blacklists", {}),
             "gangLeavers": parsed.get("gangLeavers", {}),
+            "ticketConfigs": parsed.get("ticketConfigs", {}),
         }
     except (FileNotFoundError, json.JSONDecodeError):
         try:
@@ -446,6 +459,7 @@ def load_state() -> dict:
                 "disbandJobs": {},
                 "blacklists": {},
                 "gangLeavers": {},
+                "ticketConfigs": {},
             }
         except (FileNotFoundError, json.JSONDecodeError):
             return {
@@ -453,6 +467,7 @@ def load_state() -> dict:
                 "disbandJobs": {},
                 "blacklists": {},
                 "gangLeavers": {},
+                "ticketConfigs": {},
             }
 
 
@@ -1000,6 +1015,114 @@ async def handle_disband(interaction: discord.Interaction, gauja: discord.Role) 
     )
 
 
+async def send_ticket_panel(
+    channel: discord.abc.Messageable, banner: discord.Attachment
+) -> discord.Message:
+    banner_file = await banner.to_file(filename="ticket-banner.png")
+    embed = discord.Embed(
+        title="Ticket pagalba",
+        description="Pasirinkite ticketo tipą iš meniu žemiau.",
+        color=discord.Color.red(),
+    )
+    embed.set_image(url="attachment://ticket-banner.png")
+    embed.set_footer(text="Atsakome per 24 valandas • Nepagrįsti ticketai uždaromi")
+    return await channel.send(
+        embed=embed,
+        file=banner_file,
+        view=TicketPanelView(),
+    )
+
+
+@app_commands.command(
+    name="setup-tickets",
+    description="Automatiškai sukuria visą ticket sistemą",
+)
+@app_commands.describe(
+    support_role="Darbuotojų rolė, kuri matys ir atsakys į ticketus",
+    banner="Pagalbos centro bannerio paveikslėlis",
+)
+@app_commands.default_permissions(administrator=True)
+@app_commands.guilds(discord.Object(id=GUILD_ID))
+async def setup_tickets(
+    interaction: discord.Interaction,
+    support_role: discord.Role,
+    banner: discord.Attachment,
+) -> None:
+    if not interaction.permissions.administrator:
+        await interaction.response.send_message(
+            "Šią komandą gali naudoti tik administratorius.", ephemeral=True
+        )
+        return
+    if not banner.content_type or not banner.content_type.startswith("image/"):
+        await interaction.response.send_message(
+            "Banneris turi būti paveikslėlio failas.", ephemeral=True
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    guild = interaction.guild
+    if guild is None or guild.me is None:
+        return
+
+    category = discord.utils.find(
+        lambda item: normalize(item.name) == "tickets", guild.categories
+    )
+    if category is None:
+        category = await guild.create_category(
+            "TICKETS", reason=f"Ticket sistemą sukūrė {interaction.user}"
+        )
+
+    panel_channel = discord.utils.find(
+        lambda item: normalize(item.name) == "ticket-pagalba",
+        guild.text_channels,
+    )
+    panel_overwrites = {
+        guild.default_role: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=False,
+            read_message_history=True,
+        ),
+        support_role: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True,
+        ),
+        guild.me: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            manage_channels=True,
+            read_message_history=True,
+            attach_files=True,
+        ),
+    }
+    if panel_channel is None:
+        panel_channel = await guild.create_text_channel(
+            "ticket-pagalba",
+            category=category,
+            overwrites=panel_overwrites,
+            reason=f"Ticket sistemą sukūrė {interaction.user}",
+        )
+    else:
+        await panel_channel.edit(
+            category=category,
+            overwrites=panel_overwrites,
+            reason=f"Ticket sistemą atnaujino {interaction.user}",
+        )
+
+    state["ticketConfigs"][str(guild.id)] = {
+        "categoryId": str(category.id),
+        "panelChannelId": str(panel_channel.id),
+        "supportRoleId": str(support_role.id),
+    }
+    await save_state()
+    panel = await send_ticket_panel(panel_channel, banner)
+    await interaction.followup.send(
+        f"Ticket sistema paruošta: {panel.jump_url}\n"
+        f"Kategorija: `{category.name}` • Darbuotojai: {support_role.mention}",
+        ephemeral=True,
+    )
+
+
 @app_commands.command(
     name="ticket-panel",
     description="Išsiunčia ticket sistemos panelę į šį kanalą",
@@ -1024,19 +1147,7 @@ async def ticket_panel(
         return
 
     await interaction.response.defer(ephemeral=True)
-    banner_file = await banner.to_file(filename="ticket-banner.png")
-    embed = discord.Embed(
-        title="Ticket pagalba",
-        description="Pasirinkite ticketo tipą iš meniu žemiau.",
-        color=discord.Color.red(),
-    )
-    embed.set_image(url="attachment://ticket-banner.png")
-    embed.set_footer(text="Atsakome per 24 valandas • Nepagrįsti ticketai uždaromi")
-    panel = await interaction.channel.send(
-        embed=embed,
-        file=banner_file,
-        view=TicketPanelView(),
-    )
+    panel = await send_ticket_panel(interaction.channel, banner)
     await interaction.followup.send(
         f"Ticket panelė sukurta: {panel.jump_url}", ephemeral=True
     )
@@ -1062,6 +1173,7 @@ async def disban(interaction: discord.Interaction, gauja: discord.Role) -> None:
     await handle_disband(interaction, gauja)
 
 
+bot.tree.add_command(setup_tickets)
 bot.tree.add_command(ticket_panel)
 bot.tree.add_command(disband)
 bot.tree.add_command(disban)
