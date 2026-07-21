@@ -25,6 +25,8 @@ BLACKLIST_ROLE_ID = os.getenv("BLACKLIST_ROLE_ID", "").strip()
 COOLDOWN_ROLE_NAME = os.getenv("COOLDOWN_ROLE_NAME", "3d cooldown")
 COOLDOWN_ROLE_ID = os.getenv("COOLDOWN_ROLE_ID", "").strip()
 COOLDOWN_SECONDS = float(os.getenv("COOLDOWN_HOURS", "72")) * 3600
+TICKET_CATEGORY_ID = os.getenv("TICKET_CATEGORY_ID", "").strip()
+TICKET_SUPPORT_ROLE_ID = os.getenv("TICKET_SUPPORT_ROLE_ID", "").strip()
 
 placeholders = {
     "DISCORD_TOKEN": (TOKEN, "IKLIJUOK_BOTO_TOKENA_CIA"),
@@ -226,6 +228,207 @@ async def reply_panel(
     return await message.reply(embed=embed, mention_author=False)
 
 
+TICKET_TYPES = {
+    "gang_complaint": (
+        "🚨 Gaujų skundas",
+        "Pateikite skundą dėl gaujos ar jos narių.",
+        "skundas",
+    ),
+    "gang_application": (
+        "📋 Gaujų anketa",
+        "Pildykite paraišką naujai gaujai.",
+        "anketa",
+    ),
+    "pov_request": (
+        "🎥 POV Prašymas",
+        "Paprašykite POV / klipo iš kitos gaujos.",
+        "pov",
+    ),
+    "help": (
+        "❓ Pagalba",
+        "Užduokite klausimą arba paprašykite pagalbos.",
+        "pagalba",
+    ),
+}
+
+
+def safe_channel_part(text: str) -> str:
+    value = compact(text)[:20]
+    return value or "narys"
+
+
+async def get_ticket_category(guild: discord.Guild) -> discord.CategoryChannel:
+    if TICKET_CATEGORY_ID.isdigit():
+        channel = guild.get_channel(int(TICKET_CATEGORY_ID))
+        if isinstance(channel, discord.CategoryChannel):
+            return channel
+    existing = discord.utils.find(
+        lambda category: normalize(category.name) == "tickets", guild.categories
+    )
+    if existing:
+        return existing
+    return await guild.create_category("TICKETS", reason="Ticket sistemos kategorija")
+
+
+class TicketCloseView(discord.ui.View):
+    def __init__(self) -> None:
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="Uždaryti ticket",
+        style=discord.ButtonStyle.danger,
+        emoji="🔒",
+        custom_id="ticket:close:v1",
+    )
+    async def close_ticket(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        del button
+        channel = interaction.channel
+        if not isinstance(channel, discord.TextChannel) or not channel.topic:
+            await interaction.response.send_message(
+                "Šis kanalas nėra ticket.", ephemeral=True
+            )
+            return
+
+        owner_match = re.search(r"ticket-owner:(\d+)", channel.topic)
+        is_owner = bool(owner_match and int(owner_match.group(1)) == interaction.user.id)
+        support_role = (
+            interaction.guild.get_role(int(TICKET_SUPPORT_ROLE_ID))
+            if interaction.guild and TICKET_SUPPORT_ROLE_ID.isdigit()
+            else None
+        )
+        is_support = bool(
+            isinstance(interaction.user, discord.Member)
+            and support_role
+            and support_role in interaction.user.roles
+        )
+        can_manage = interaction.permissions.manage_channels
+        if not is_owner and not is_support and not can_manage:
+            await interaction.response.send_message(
+                "Šį ticket gali uždaryti jo autorius arba darbuotojas.", ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message("🔒 Ticket uždaromas po 3 sekundžių.")
+        await asyncio.sleep(3)
+        await channel.delete(reason=f"Ticket uždarė {interaction.user}")
+
+
+class TicketTypeSelect(discord.ui.Select):
+    def __init__(self) -> None:
+        options = [
+            discord.SelectOption(
+                label="Gaujų skundas",
+                description="Pateikti skundą dėl gaujos ar jos narių",
+                emoji="🚨",
+                value="gang_complaint",
+            ),
+            discord.SelectOption(
+                label="Gaujų anketa",
+                description="Pildyti paraišką naujai gaujai",
+                emoji="📋",
+                value="gang_application",
+            ),
+            discord.SelectOption(
+                label="POV Prašymas",
+                description="Paprašyti POV / klipo iš kitos gaujos",
+                emoji="🎥",
+                value="pov_request",
+            ),
+            discord.SelectOption(
+                label="Pagalba",
+                description="Klausimai ir kita pagalba",
+                emoji="❓",
+                value="help",
+            ),
+        ]
+        super().__init__(
+            placeholder="Pasirinkite tipą",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="ticket:create:v1",
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        guild = interaction.guild
+        if guild is None or not isinstance(interaction.user, discord.Member):
+            return
+        await interaction.response.defer(ephemeral=True)
+
+        existing = discord.utils.find(
+            lambda channel: isinstance(channel, discord.TextChannel)
+            and channel.topic is not None
+            and f"ticket-owner:{interaction.user.id}" in channel.topic,
+            guild.text_channels,
+        )
+        if existing:
+            await interaction.followup.send(
+                f"Jau turite atidarytą ticket: {existing.mention}", ephemeral=True
+            )
+            return
+
+        ticket_type = self.values[0]
+        title, description, channel_prefix = TICKET_TYPES[ticket_type]
+        category = await get_ticket_category(guild)
+        support_role = (
+            guild.get_role(int(TICKET_SUPPORT_ROLE_ID))
+            if TICKET_SUPPORT_ROLE_ID.isdigit()
+            else None
+        )
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            interaction.user: discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                attach_files=True,
+            ),
+            guild.me: discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                manage_channels=True,
+                read_message_history=True,
+            ),
+        }
+        if support_role:
+            overwrites[support_role] = discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+            )
+
+        channel = await guild.create_text_channel(
+            f"{channel_prefix}-{safe_channel_part(interaction.user.display_name)}",
+            category=category,
+            overwrites=overwrites,
+            topic=f"ticket-owner:{interaction.user.id};type:{ticket_type}",
+            reason=f"Ticket sukūrė {interaction.user}",
+        )
+        embed = discord.Embed(
+            title=title,
+            description=(
+                f"{interaction.user.mention}, aprašykite situaciją kuo išsamiau.\n\n"
+                f"{description}\n\nDarbuotojai atsakys, kai galės."
+            ),
+            color=discord.Color.red(),
+        )
+        content = interaction.user.mention
+        if support_role:
+            content += f" {support_role.mention}"
+        await channel.send(content=content, embed=embed, view=TicketCloseView())
+        await interaction.followup.send(
+            f"Ticket sukurtas: {channel.mention}", ephemeral=True
+        )
+
+
+class TicketPanelView(discord.ui.View):
+    def __init__(self) -> None:
+        super().__init__(timeout=None)
+        self.add_item(TicketTypeSelect())
+
+
 def load_state() -> dict:
     try:
         parsed = json.loads(DATA_FILE.read_text(encoding="utf-8"))
@@ -277,6 +480,7 @@ intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
+persistent_views_registered = False
 
 
 async def cooldown_worker(guild_id: int, user_id: int, expires_at: float) -> None:
@@ -384,6 +588,12 @@ async def process_disband_jobs() -> None:
 
 @bot.event
 async def on_ready() -> None:
+    global persistent_views_registered
+    if not persistent_views_registered:
+        bot.add_view(TicketPanelView())
+        bot.add_view(TicketCloseView())
+        persistent_views_registered = True
+
     guild_object = discord.Object(id=GUILD_ID)
     await bot.tree.sync(guild=guild_object)
     print(f"Prisijungta kaip {bot.user}. /disband užregistruota.")
@@ -791,6 +1001,48 @@ async def handle_disband(interaction: discord.Interaction, gauja: discord.Role) 
 
 
 @app_commands.command(
+    name="ticket-panel",
+    description="Išsiunčia ticket sistemos panelę į šį kanalą",
+)
+@app_commands.describe(banner="Pagalbos centro bannerio paveikslėlis")
+@app_commands.default_permissions(manage_channels=True)
+@app_commands.guilds(discord.Object(id=GUILD_ID))
+async def ticket_panel(
+    interaction: discord.Interaction, banner: discord.Attachment
+) -> None:
+    if not interaction.permissions.manage_channels:
+        await interaction.response.send_message(
+            "Šiai komandai reikia Manage Channels teisės.", ephemeral=True
+        )
+        return
+    if not banner.content_type or not banner.content_type.startswith("image/"):
+        await interaction.response.send_message(
+            "Banneris turi būti paveikslėlio failas.", ephemeral=True
+        )
+        return
+    if interaction.channel is None:
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    banner_file = await banner.to_file(filename="ticket-banner.png")
+    embed = discord.Embed(
+        title="Ticket pagalba",
+        description="Pasirinkite ticketo tipą iš meniu žemiau.",
+        color=discord.Color.red(),
+    )
+    embed.set_image(url="attachment://ticket-banner.png")
+    embed.set_footer(text="Atsakome per 24 valandas • Nepagrįsti ticketai uždaromi")
+    panel = await interaction.channel.send(
+        embed=embed,
+        file=banner_file,
+        view=TicketPanelView(),
+    )
+    await interaction.followup.send(
+        f"Ticket panelė sukurta: {panel.jump_url}", ephemeral=True
+    )
+
+
+@app_commands.command(
     name="disband", description="Išformuoja gaują ir uždeda 3 dienų cooldown"
 )
 @app_commands.describe(gauja="Gaujos rolė, kurios narius reikia išformuoti")
@@ -810,5 +1062,7 @@ async def disban(interaction: discord.Interaction, gauja: discord.Role) -> None:
     await handle_disband(interaction, gauja)
 
 
+bot.tree.add_command(ticket_panel)
 bot.tree.add_command(disband)
+bot.tree.add_command(disban)
 bot.run(TOKEN)
