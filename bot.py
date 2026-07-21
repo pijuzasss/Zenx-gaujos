@@ -27,6 +27,7 @@ COOLDOWN_ROLE_ID = os.getenv("COOLDOWN_ROLE_ID", "").strip()
 COOLDOWN_SECONDS = float(os.getenv("COOLDOWN_HOURS", "72")) * 3600
 TICKET_CATEGORY_ID = os.getenv("TICKET_CATEGORY_ID", "").strip()
 TICKET_SUPPORT_ROLE_ID = os.getenv("TICKET_SUPPORT_ROLE_ID", "").strip()
+ROLE_REQUESTS_CHANNEL_ID = os.getenv("ROLE_REQUESTS_CHANNEL_ID", "").strip()
 
 placeholders = {
     "DISCORD_TOKEN": (TOKEN, "IKLIJUOK_BOTO_TOKENA_CIA"),
@@ -218,6 +219,17 @@ async def get_or_create_cooldown_role(guild: discord.Guild) -> discord.Role:
     )
 
 
+def get_role_requests_channel(guild: discord.Guild) -> discord.TextChannel | None:
+    if ROLE_REQUESTS_CHANNEL_ID.isdigit():
+        configured_channel = guild.get_channel(int(ROLE_REQUESTS_CHANNEL_ID))
+        if isinstance(configured_channel, discord.TextChannel):
+            return configured_channel
+    return discord.utils.find(
+        lambda channel: compact(channel.name) == "rolesprasymai",
+        guild.text_channels,
+    )
+
+
 async def reply_panel(
     message: discord.Message, text: str, success: bool = True
 ) -> discord.Message:
@@ -225,6 +237,10 @@ async def reply_panel(
         description=text,
         color=discord.Color.green() if success else discord.Color.red(),
     )
+    destination = get_role_requests_channel(message.guild) if message.guild else None
+
+    if destination and destination.id != message.channel.id:
+        return await destination.send(embed=embed)
     return await message.reply(embed=embed, mention_author=False)
 
 
@@ -776,6 +792,11 @@ async def on_message(message: discord.Message) -> None:
     elif "off" in words:
         action = "off"
     else:
+        return
+
+    role_requests_channel = get_role_requests_channel(message.guild)
+    if role_requests_channel is None or message.channel.id != role_requests_channel.id:
+        # Už šio kanalo ribų komanda ignoruojama: neatsakome ir nekeičiame rolių.
         return
 
     target = message.mentions[0]
