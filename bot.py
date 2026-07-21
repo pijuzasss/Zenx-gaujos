@@ -441,6 +441,27 @@ class TicketPanelView(discord.ui.View):
         self.add_item(TicketTypeSelect())
 
 
+def ticket_access(interaction: discord.Interaction) -> tuple[bool, bool, bool]:
+    """Grąžina: ar ticket kanalas, ar autorius, ar support/kanalų valdytojas."""
+    channel = interaction.channel
+    if not isinstance(channel, discord.TextChannel) or not channel.topic:
+        return False, False, False
+    owner_match = re.search(r"ticket-owner:(\d+)", channel.topic)
+    if not owner_match:
+        return False, False, False
+    is_owner = int(owner_match.group(1)) == interaction.user.id
+    support_role = (
+        get_ticket_support_role(interaction.guild) if interaction.guild else None
+    )
+    is_support = bool(
+        isinstance(interaction.user, discord.Member)
+        and support_role
+        and support_role in interaction.user.roles
+    )
+    is_staff = bool(is_support or interaction.permissions.manage_channels)
+    return True, is_owner, is_staff
+
+
 def load_state() -> dict:
     try:
         parsed = json.loads(DATA_FILE.read_text(encoding="utf-8"))
@@ -1035,6 +1056,81 @@ async def send_ticket_panel(
 
 
 @app_commands.command(
+    name="ticket-add-member",
+    description="Prideda žmogų į dabartinį ticket kanalą",
+)
+@app_commands.describe(member="Žmogus, kurį norite pridėti į ticket")
+@app_commands.guilds(discord.Object(id=GUILD_ID))
+async def ticket_add_member(
+    interaction: discord.Interaction, member: discord.Member
+) -> None:
+    is_ticket, is_owner, is_staff = ticket_access(interaction)
+    if not is_ticket:
+        await interaction.response.send_message(
+            "Šią komandą galima naudoti tik ticket kanale.", ephemeral=True
+        )
+        return
+    if not is_owner and not is_staff:
+        await interaction.response.send_message(
+            "Žmogų gali pridėti ticket autorius arba darbuotojas.", ephemeral=True
+        )
+        return
+    channel = interaction.channel
+    await channel.set_permissions(
+        member,
+        view_channel=True,
+        send_messages=True,
+        read_message_history=True,
+        attach_files=True,
+        reason=f"Į ticket pridėjo {interaction.user}",
+    )
+    await interaction.response.send_message(
+        f"✅ {member.mention} pridėtas į ticket."
+    )
+
+
+@app_commands.command(
+    name="ticket-add-role",
+    description="Prideda rolę į dabartinį ticket kanalą",
+)
+@app_commands.describe(role="Rolė, kurią norite pridėti į ticket")
+@app_commands.guilds(discord.Object(id=GUILD_ID))
+async def ticket_add_role(
+    interaction: discord.Interaction, role: discord.Role
+) -> None:
+    is_ticket, _is_owner, is_staff = ticket_access(interaction)
+    if not is_ticket:
+        await interaction.response.send_message(
+            "Šią komandą galima naudoti tik ticket kanale.", ephemeral=True
+        )
+        return
+    if not is_staff:
+        await interaction.response.send_message(
+            "Rolę gali pridėti tik support darbuotojas arba kanalų valdytojas.",
+            ephemeral=True,
+        )
+        return
+    if interaction.guild is None or role == interaction.guild.default_role:
+        await interaction.response.send_message(
+            "Saugumo sumetimais @everyone rolės pridėti negalima.", ephemeral=True
+        )
+        return
+    channel = interaction.channel
+    await channel.set_permissions(
+        role,
+        view_channel=True,
+        send_messages=True,
+        read_message_history=True,
+        attach_files=True,
+        reason=f"Į ticket rolę pridėjo {interaction.user}",
+    )
+    await interaction.response.send_message(
+        f"✅ Rolė {role.mention} pridėta į ticket.",
+        allowed_mentions=discord.AllowedMentions(roles=False),
+    )
+
+
+@app_commands.command(
     name="setup-tickets",
     description="Automatiškai sukuria visą ticket sistemą",
 )
@@ -1198,6 +1294,7 @@ async def disban(interaction: discord.Interaction, gauja: discord.Role) -> None:
 bot.tree.add_command(setup_tickets)
 bot.tree.add_command(setup)
 bot.tree.add_command(ticket_panel)
+bot.tree.add_command(ticket_add_member)
+bot.tree.add_command(ticket_add_role)
 bot.tree.add_command(disband)
-bot.tree.add_command(disban)
 bot.run(TOKEN)
