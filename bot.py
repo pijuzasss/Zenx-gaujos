@@ -610,8 +610,9 @@ async def on_ready() -> None:
         persistent_views_registered = True
 
     guild_object = discord.Object(id=GUILD_ID)
-    await bot.tree.sync(guild=guild_object)
-    print(f"Prisijungta kaip {bot.user}. /disband užregistruota.")
+    synced_commands = await bot.tree.sync(guild=guild_object)
+    synced_names = ", ".join(f"/{command.name}" for command in synced_commands)
+    print(f"Prisijungta kaip {bot.user}. Užregistruotos komandos: {synced_names}")
 
     for key, entry in list(state["cooldowns"].items()):
         guild_id, user_id = map(int, key.split(":"))
@@ -1041,16 +1042,16 @@ async def send_ticket_panel(
     support_role="Darbuotojų rolė, kuri matys ir atsakys į ticketus",
     banner="Pagalbos centro bannerio paveikslėlis",
 )
-@app_commands.default_permissions(administrator=True)
+@app_commands.default_permissions(manage_channels=True)
 @app_commands.guilds(discord.Object(id=GUILD_ID))
 async def setup_tickets(
     interaction: discord.Interaction,
     support_role: discord.Role,
     banner: discord.Attachment,
 ) -> None:
-    if not interaction.permissions.administrator:
+    if not interaction.permissions.manage_channels:
         await interaction.response.send_message(
-            "Šią komandą gali naudoti tik administratorius.", ephemeral=True
+            "Šiai komandai reikia Manage Channels teisės.", ephemeral=True
         )
         return
     if not banner.content_type or not banner.content_type.startswith("image/"):
@@ -1124,6 +1125,24 @@ async def setup_tickets(
 
 
 @app_commands.command(
+    name="setup",
+    description="Automatiškai sukuria visą ticket sistemą",
+)
+@app_commands.describe(
+    support_role="Darbuotojų rolė, kuri matys ir atsakys į ticketus",
+    banner="Pagalbos centro bannerio paveikslėlis",
+)
+@app_commands.default_permissions(manage_channels=True)
+@app_commands.guilds(discord.Object(id=GUILD_ID))
+async def setup(
+    interaction: discord.Interaction,
+    support_role: discord.Role,
+    banner: discord.Attachment,
+) -> None:
+    await setup_tickets.callback(interaction, support_role, banner)
+
+
+@app_commands.command(
     name="ticket-panel",
     description="Išsiunčia ticket sistemos panelę į šį kanalą",
 )
@@ -1174,6 +1193,7 @@ async def disban(interaction: discord.Interaction, gauja: discord.Role) -> None:
 
 
 bot.tree.add_command(setup_tickets)
+bot.tree.add_command(setup)
 bot.tree.add_command(ticket_panel)
 bot.tree.add_command(disband)
 bot.tree.add_command(disban)
