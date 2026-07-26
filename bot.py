@@ -511,6 +511,7 @@ def load_state() -> dict:
 state = load_state()
 state_lock = asyncio.Lock()
 job_lock = asyncio.Lock()
+color_change_lock = asyncio.Lock()
 cooldown_tasks: dict[str, asyncio.Task] = {}
 
 
@@ -754,19 +755,38 @@ async def on_member_join(member: discord.Member) -> None:
 @bot.event
 async def on_member_update(before: discord.Member, after: discord.Member) -> None:
     key = f"{after.guild.id}:{after.id}"
+    before_ids = {role.id for role in before.roles}
+    after_ids = {role.id for role in after.roles}
     before_blacklisted = any(role_is_blacklist(role) for role in before.roles)
     after_blacklisted = any(role_is_blacklist(role) for role in after.roles)
     if before_blacklisted and not after_blacklisted:
         state["blacklists"].pop(key, None)
         await save_state()
 
+    cooldown_role = find_cooldown_role(after.guild)
+    if (
+        cooldown_role
+        and cooldown_role.id not in before_ids
+        and cooldown_role.id in after_ids
+    ):
+        entry = state["cooldowns"].get(key)
+        if entry and float(entry["expiresAt"]) > time.time():
+            expires_at = float(entry["expiresAt"])
+        else:
+            expires_at = time.time() + COOLDOWN_SECONDS
+        state["cooldowns"][key] = {
+            "roleId": str(cooldown_role.id),
+            "expiresAt": expires_at,
+        }
+        await save_state()
+        schedule_cooldown(after.guild.id, after.id, expires_at)
+        print(f"Nariui {after} automatiškai pradėtas 3 dienų cooldown.")
+
     entry = state["cooldowns"].get(key)
     if not entry:
         return
 
     cooldown_role_id = int(entry["roleId"])
-    before_ids = {role.id for role in before.roles}
-    after_ids = {role.id for role in after.roles}
     if cooldown_role_id in before_ids and cooldown_role_id not in after_ids:
         state["cooldowns"].pop(key, None)
         task = cooldown_tasks.pop(key, None)
@@ -1020,6 +1040,106 @@ async def on_message(message: discord.Message) -> None:
         )
 
 
+async def apply_gang_color_change(
+    guild: discord.Guild,
+    old_role: discord.Role,
+    new_role: discord.Role,
+    requested_by: discord.abc.User,
+) -> tuple[int, list[str]]:
+    async with color_change_lock:
+        await guild.chunk(cache=True)
+        bot_member = guild.me
+        if bot_member is None:
+            return 0, ["Nepavyko rasti boto nario serveryje"]
+        if old_role >= bot_member.top_role or new_role >= bot_member.top_role:
+            return 0, ["Boto rolė turi būti aukščiau už abi gaujų roles"]
+
+        members = list(old_role.members)
+        completed = 0
+        failures = []
+        for member in members:
+            try:
+                if new_role not in member.roles:
+                    await member.add_roles(
+                        new_role,
+                        reason=f"Gaujos spalvą pakeitė {requested_by}",
+                    )
+                if old_role in member.roles:
+                    await member.remove_roles(
+                        old_role,
+                        reason=f"Gaujos spalvą pakeitė {requested_by}",
+                    )
+                completed += 1
+            except discord.HTTPException:
+                failures.append(str(member))
+        return completed, failures
+
+
+class ColorChangeConfirmView(discord.ui.View):
+    def __init__(
+        self, requester_id: int, old_role_id: int, new_role_id: int
+    ) -> None:
+        super().__init__(timeout=60)
+        self.requester_id = requester_id
+        self.old_role_id = old_role_id
+        self.new_role_id = new_role_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message(
+                "Šį pasirinkimą gali patvirtinti tik komandą paleidęs administratorius.",
+                ephemeral=True,
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="Tęsti keitimą", style=discord.ButtonStyle.danger, emoji="⚠️")
+    async def confirm(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        del button
+        guild = interaction.guild
+        if guild is None:
+            return
+        old_role = guild.get_role(self.old_role_id)
+        new_role = guild.get_role(self.new_role_id)
+        if old_role is None or new_role is None:
+            await interaction.response.edit_message(
+                content="Viena iš gaujos rolių buvo ištrinta. Keitimas atšauktas.",
+                embed=None,
+                view=None,
+            )
+            return
+        await interaction.response.defer(ephemeral=True)
+        completed, failures = await apply_gang_color_change(
+            guild, old_role, new_role, interaction.user
+        )
+        failure_text = (
+            f"\nNepavyko pakeisti {len(failures)} narių: {', '.join(failures[:10])}"
+            if failures
+            else ""
+        )
+        await interaction.edit_original_response(
+            content=(
+                f"✅ Perkelta narių: **{completed}**. "
+                f"`{old_role.name}` → `{new_role.name}`.\n"
+                "Boss, des.ranka ir visos kitos rolės paliktos nepakeistos."
+                f"{failure_text}"
+            ),
+            embed=None,
+            view=None,
+        )
+
+    @discord.ui.button(label="Atšaukti", style=discord.ButtonStyle.secondary, emoji="✖️")
+    async def cancel(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        del button
+        await interaction.response.edit_message(
+            content="Spalvos keitimas atšauktas.", embed=None, view=None
+        )
+
+
 async def handle_disband(interaction: discord.Interaction, gauja: discord.Role) -> None:
     if not interaction.permissions.manage_roles:
         await interaction.response.send_message(
@@ -1073,6 +1193,91 @@ async def send_ticket_panel(
         embed=embed,
         file=banner_file,
         view=TicketPanelView(),
+    )
+
+
+@app_commands.command(
+    name="pakeisti-spalva",
+    description="Perkelia visus vienos gaujos narius į kitos spalvos gaują",
+)
+@app_commands.describe(
+    sena_gauja="Dabartinė gaujos rolė",
+    nauja_gauja="Nauja gaujos spalvos rolė",
+)
+@app_commands.default_permissions(manage_roles=True)
+@app_commands.guilds(discord.Object(id=GUILD_ID))
+async def pakeisti_spalva(
+    interaction: discord.Interaction,
+    sena_gauja: discord.Role,
+    nauja_gauja: discord.Role,
+) -> None:
+    if not interaction.permissions.manage_roles:
+        await interaction.response.send_message(
+            "Šiai komandai reikia Manage Roles teisės.", ephemeral=True
+        )
+        return
+    if interaction.guild is None:
+        return
+    if sena_gauja == nauja_gauja:
+        await interaction.response.send_message(
+            "Sena ir nauja gaujos rolės negali būti vienodos.", ephemeral=True
+        )
+        return
+    invalid_role = any(
+        role == interaction.guild.default_role
+        or role.managed
+        or normalize(GANG_TEXT) not in normalize(role.name)
+        or role_is_boss(role)
+        for role in (sena_gauja, nauja_gauja)
+    )
+    if invalid_role:
+        await interaction.response.send_message(
+            "Pasirink abi tikras gaujų roles (pvz. `// ŽALIA // GAUJA7`), ne boss ar integracijos rolę.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    await interaction.guild.chunk(cache=True)
+    target_members = list(nauja_gauja.members)
+    if target_members:
+        preview = ", ".join(str(member) for member in target_members[:10])
+        extra = (
+            f" ir dar {len(target_members) - 10}"
+            if len(target_members) > 10
+            else ""
+        )
+        warning = discord.Embed(
+            title="⚠️ Naujoje gaujoje jau yra žmonių",
+            description=(
+                f"Rolę `{nauja_gauja.name}` jau turi **{len(target_members)}** narių.\n"
+                f"Nariai: {preview}{extra}\n\n"
+                f"Ar tikrai norite perkelti visus iš `{sena_gauja.name}`?"
+            ),
+            color=discord.Color.orange(),
+        )
+        await interaction.followup.send(
+            embed=warning,
+            view=ColorChangeConfirmView(
+                interaction.user.id, sena_gauja.id, nauja_gauja.id
+            ),
+            ephemeral=True,
+        )
+        return
+
+    completed, failures = await apply_gang_color_change(
+        interaction.guild, sena_gauja, nauja_gauja, interaction.user
+    )
+    failure_text = (
+        f" Nepavyko pakeisti {len(failures)} narių: {', '.join(failures[:10])}."
+        if failures
+        else ""
+    )
+    await interaction.followup.send(
+        f"✅ Perkelta narių: **{completed}**. "
+        f"`{sena_gauja.name}` → `{nauja_gauja.name}`. "
+        f"Boss, des.ranka ir kitos rolės paliktos.{failure_text}",
+        ephemeral=True,
     )
 
 
@@ -1313,9 +1518,9 @@ async def disban(interaction: discord.Interaction, gauja: discord.Role) -> None:
 
 
 bot.tree.add_command(setup_tickets)
-bot.tree.add_command(setup)
 bot.tree.add_command(ticket_panel)
 bot.tree.add_command(ticket_add_member)
 bot.tree.add_command(ticket_add_role)
+bot.tree.add_command(pakeisti_spalva)
 bot.tree.add_command(disband)
 bot.run(TOKEN)
