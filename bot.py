@@ -1047,7 +1047,6 @@ async def apply_gang_color_change(
     requested_by: discord.abc.User,
 ) -> tuple[int, list[str]]:
     async with color_change_lock:
-        await guild.chunk(cache=True)
         bot_member = guild.me
         if bot_member is None:
             return 0, ["Nepavyko rasti boto nario serveryje"]
@@ -1059,18 +1058,21 @@ async def apply_gang_color_change(
         failures = []
         for member in members:
             try:
-                if new_role not in member.roles:
-                    await member.add_roles(
-                        new_role,
-                        reason=f"Gaujos spalvą pakeitė {requested_by}",
-                    )
-                if old_role in member.roles:
-                    await member.remove_roles(
-                        old_role,
-                        reason=f"Gaujos spalvą pakeitė {requested_by}",
-                    )
+                async def change_member_roles() -> None:
+                    if new_role not in member.roles:
+                        await member.add_roles(
+                            new_role,
+                            reason=f"Gaujos spalvą pakeitė {requested_by}",
+                        )
+                    if old_role in member.roles:
+                        await member.remove_roles(
+                            old_role,
+                            reason=f"Gaujos spalvą pakeitė {requested_by}",
+                        )
+
+                await asyncio.wait_for(change_member_roles(), timeout=30)
                 completed += 1
-            except discord.HTTPException:
+            except (discord.HTTPException, asyncio.TimeoutError):
                 failures.append(str(member))
         return completed, failures
 
@@ -1110,7 +1112,11 @@ class ColorChangeConfirmView(discord.ui.View):
                 view=None,
             )
             return
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.edit_message(
+            content="⏳ Gaujos spalva keičiama, palaukite...",
+            embed=None,
+            view=None,
+        )
         completed, failures = await apply_gang_color_change(
             guild, old_role, new_role, interaction.user
         )
@@ -1238,7 +1244,10 @@ async def pakeisti_spalva(
         return
 
     await interaction.response.defer(ephemeral=True)
-    await interaction.guild.chunk(cache=True)
+    try:
+        await asyncio.wait_for(interaction.guild.chunk(cache=True), timeout=10)
+    except asyncio.TimeoutError:
+        print("Narių sąrašo užkrovimas užtruko per ilgai; naudojamas esamas cache.")
     target_members = list(nauja_gauja.members)
     if target_members:
         preview = ", ".join(str(member) for member in target_members[:10])
@@ -1265,6 +1274,11 @@ async def pakeisti_spalva(
         )
         return
 
+    status_message = await interaction.followup.send(
+        "⏳ Gaujos spalva keičiama, palaukite...",
+        ephemeral=True,
+        wait=True,
+    )
     completed, failures = await apply_gang_color_change(
         interaction.guild, sena_gauja, nauja_gauja, interaction.user
     )
@@ -1273,11 +1287,12 @@ async def pakeisti_spalva(
         if failures
         else ""
     )
-    await interaction.followup.send(
+    await status_message.edit(
+        content=(
         f"✅ Perkelta narių: **{completed}**. "
         f"`{sena_gauja.name}` → `{nauja_gauja.name}`. "
-        f"Boss, des.ranka ir kitos rolės paliktos.{failure_text}",
-        ephemeral=True,
+        f"Boss, des.ranka ir kitos rolės paliktos.{failure_text}"
+        )
     )
 
 
