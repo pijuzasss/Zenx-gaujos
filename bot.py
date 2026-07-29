@@ -610,28 +610,30 @@ async def process_disband_jobs() -> None:
                 await save_state()
 
                 try:
-                    removable = [
-                        role
-                        for role in member.roles
-                        if role != guild.default_role
-                        and not role.managed
-                        and role < bot_member.top_role
-                    ]
-                    if removable:
-                        await member.remove_roles(
-                            *removable,
+                    async def disband_member() -> None:
+                        removable = [
+                            role
+                            for role in member.roles
+                            if role != guild.default_role
+                            and not role.managed
+                            and role < bot_member.top_role
+                        ]
+                        if removable:
+                            await member.remove_roles(
+                                *removable,
                             reason=f"Tęsiamas gaujos išformavimas ({job['requestedBy']})",
-                        )
-                    if cooldown_role not in member.roles:
-                        await member.add_roles(
-                            cooldown_role,
+                            )
+                        if cooldown_role not in member.roles:
+                            await member.add_roles(
+                                cooldown_role,
                             reason="3 dienų cooldown po gaujos išformavimo",
-                        )
+                            )
+                    await asyncio.wait_for(disband_member(), timeout=30)
                     schedule_cooldown(guild.id, user_id, job["expiresAt"])
                     job["pendingMemberIds"].remove(user_id_text)
                     job["completed"] += 1
                     await save_state()
-                except discord.HTTPException as error:
+                except (discord.HTTPException, asyncio.TimeoutError) as error:
                     print(f"Nepavyko apdoroti {member}: {error}")
 
             if not job["pendingMemberIds"]:
@@ -670,7 +672,7 @@ async def on_ready() -> None:
                 await save_state()
                 continue
         schedule_cooldown(guild_id, user_id, expires_at)
-    await process_disband_jobs()
+    asyncio.create_task(process_disband_jobs())
 
 
 @bot.event
@@ -1161,8 +1163,17 @@ async def handle_disband(interaction: discord.Interaction, gauja: discord.Role) 
     cooldown_role = await get_or_create_cooldown_role(guild)
 
     # Užkrauname visus serverio narius, kad disband nepraleistų necache'intų narių.
-    await guild.chunk(cache=True)
+    try:
+        await asyncio.wait_for(guild.chunk(cache=True), timeout=10)
+    except asyncio.TimeoutError:
+        print("Disband: nariu uzkrovimas uztruko per ilgai; naudojamas esamas cache.")
     member_ids = [str(member.id) for member in gauja.members]
+    if not member_ids:
+        await interaction.followup.send(
+            "Neradau nariu su sia gaujos role. Patikrink Server Members Intent ir ar pasirinkai tinkama role.",
+            ephemeral=True,
+        )
+        return
     job_id = f"{guild.id}:{int(time.time() * 1000)}"
     state["disbandJobs"][job_id] = {
         "guildId": str(guild.id),
@@ -1174,7 +1185,13 @@ async def handle_disband(interaction: discord.Interaction, gauja: discord.Role) 
         "completed": 0,
     }
     await save_state()
-    await process_disband_jobs()
+    asyncio.create_task(process_disband_jobs())
+    await interaction.followup.send(
+        f"Disband pradetas fone: {len(member_ids)} nariu. "
+        f"Cooldown: {COOLDOWN_SECONDS / 3600:g} val. Progresas issaugomas po kiekvieno nario.",
+        ephemeral=True,
+    )
+    return
 
     remaining = len(state["disbandJobs"].get(job_id, {}).get("pendingMemberIds", []))
     await interaction.followup.send(
