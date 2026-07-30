@@ -1588,10 +1588,86 @@ async def disban(interaction: discord.Interaction, gauja: discord.Role) -> None:
     await handle_disband(interaction, gauja)
 
 
+def format_remaining(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    days, seconds = divmod(seconds, 86400)
+    hours, seconds = divmod(seconds, 3600)
+    minutes, _seconds = divmod(seconds, 60)
+    parts = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes or not parts:
+        parts.append(f"{minutes}m")
+    return " ".join(parts)
+
+
+@app_commands.command(
+    name="checkcd",
+    description="Parodo aktyvius 3d cooldown narius ir likusi laika",
+)
+@app_commands.default_permissions(manage_roles=True)
+@app_commands.guilds(discord.Object(id=GUILD_ID))
+async def checkcd(interaction: discord.Interaction) -> None:
+    if not interaction.permissions.manage_roles:
+        await interaction.response.send_message(
+            "Siai komandai reikia Manage Roles teises.", ephemeral=True
+        )
+        return
+    if interaction.guild is None:
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    now = time.time()
+    lines = []
+    cleaned = False
+    for key, entry in list(state["cooldowns"].items()):
+        guild_id_text, user_id_text = key.split(":")
+        if int(guild_id_text) != interaction.guild.id:
+            continue
+
+        expires_at = float(entry["expiresAt"])
+        if expires_at <= now:
+            try:
+                await expire_cooldown_now(interaction.guild.id, int(user_id_text), expires_at)
+            except Exception as error:
+                print(f"Checkcd: nepavyko nuimti pasibaigusio cooldown nuo {key}: {error}")
+            cleaned = True
+            continue
+
+        member = interaction.guild.get_member(int(user_id_text))
+        if member is None:
+            try:
+                member = await interaction.guild.fetch_member(int(user_id_text))
+            except discord.NotFound:
+                member = None
+        name = member.mention if member else f"<@{user_id_text}>"
+        lines.append(f"{name} - liko {format_remaining(expires_at - now)}")
+
+    if cleaned:
+        await save_state()
+
+    embed = discord.Embed(
+        title="Aktyvus 3d cooldown",
+        color=discord.Color.orange(),
+    )
+    if lines:
+        text = "\n".join(lines[:40])
+        if len(lines) > 40:
+            text += f"\n... ir dar {len(lines) - 40}"
+        embed.description = text
+    else:
+        embed.description = "Siuo metu aktyviu cooldown nariu nera."
+
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+
 bot.tree.add_command(setup_tickets)
 bot.tree.add_command(ticket_panel)
 bot.tree.add_command(ticket_add_member)
 bot.tree.add_command(ticket_add_role)
 bot.tree.add_command(pakeisti_spalva)
+bot.tree.add_command(checkcd)
 bot.tree.add_command(disband)
 bot.run(TOKEN)
