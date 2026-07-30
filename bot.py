@@ -536,6 +536,35 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 persistent_views_registered = False
 
 
+async def expire_cooldown_now(guild_id: int, user_id: int, expires_at: float) -> bool:
+    key = f"{guild_id}:{user_id}"
+    entry = state["cooldowns"].get(key)
+    if not entry or float(entry["expiresAt"]) != float(expires_at):
+        return True
+
+    guild = bot.get_guild(guild_id) or await bot.fetch_guild(guild_id)
+    member = guild.get_member(user_id)
+    if member is None:
+        try:
+            member = await guild.fetch_member(user_id)
+        except discord.NotFound:
+            member = None
+
+    roles_to_remove = []
+    saved_role = guild.get_role(int(entry["roleId"]))
+    current_role = find_cooldown_role(guild)
+    for role in (saved_role, current_role):
+        if member and role and role in member.roles and role not in roles_to_remove:
+            roles_to_remove.append(role)
+
+    if member and roles_to_remove:
+        await member.remove_roles(*roles_to_remove, reason="3 dienu cooldown baigesi")
+
+    state["cooldowns"].pop(key, None)
+    await save_state()
+    return True
+
+
 async def cooldown_worker(guild_id: int, user_id: int, expires_at: float) -> None:
     key = f"{guild_id}:{user_id}"
     try:
@@ -543,6 +572,9 @@ async def cooldown_worker(guild_id: int, user_id: int, expires_at: float) -> Non
         entry = state["cooldowns"].get(key)
         if not entry or entry["expiresAt"] != expires_at:
             return
+
+        await expire_cooldown_now(guild_id, user_id, expires_at)
+        return
 
         guild = bot.get_guild(guild_id) or await bot.fetch_guild(guild_id)
         member = guild.get_member(user_id)
@@ -657,6 +689,13 @@ async def on_ready() -> None:
     for key, entry in list(state["cooldowns"].items()):
         guild_id, user_id = map(int, key.split(":"))
         expires_at = float(entry["expiresAt"])
+        if expires_at <= time.time():
+            try:
+                await expire_cooldown_now(guild_id, user_id, expires_at)
+            except Exception as error:
+                print(f"Nepavyko iskart nuimti pasibaigusio cooldown nuo {key}: {error}")
+            continue
+
         guild = bot.get_guild(guild_id)
         if guild and expires_at > time.time():
             member = guild.get_member(user_id)
