@@ -28,6 +28,7 @@ COOLDOWN_SECONDS = float(os.getenv("COOLDOWN_HOURS", "72")) * 3600
 TICKET_CATEGORY_ID = os.getenv("TICKET_CATEGORY_ID", "").strip()
 TICKET_SUPPORT_ROLE_ID = os.getenv("TICKET_SUPPORT_ROLE_ID", "").strip()
 ROLE_REQUESTS_CHANNEL_ID = os.getenv("ROLE_REQUESTS_CHANNEL_ID", "").strip()
+GANG_MEMBER_LIMIT = int(os.getenv("GANG_MEMBER_LIMIT", "20"))
 
 placeholders = {
     "DISCORD_TOKEN": (TOKEN, "IKLIJUOK_BOTO_TOKENA_CIA"),
@@ -187,6 +188,10 @@ def role_display_name(role: discord.Role) -> str:
     if gang_number:
         return f"Gauja{gang_number.group(1)}"
     return role.name
+
+
+def gang_member_count_text(role: discord.Role) -> str:
+    return f"({len(role.members)}/{GANG_MEMBER_LIMIT} nariu)"
 
 
 def find_cooldown_role(guild: discord.Guild) -> discord.Role | None:
@@ -957,7 +962,7 @@ async def on_message(message: discord.Message) -> None:
             schedule_cooldown(message.guild.id, target.id, expires_at)
             await reply_panel(
                 message,
-                f"✅ {target.mention} pašalintas iš {gang_role.mention} ir gavo 3 dienų cooldown.",
+                f"✅ {target.mention} pasalintas is {role_display_name(gang_role)}. {gang_member_count_text(gang_role)}",
             )
         except discord.HTTPException:
             await reply_panel(
@@ -1037,7 +1042,7 @@ async def on_message(message: discord.Message) -> None:
         return
 
     if not right_hand_requested and gang_role in target.roles:
-        await reply_panel(message, f"❌ {target.mention} jau turi {gang_role.mention} rolę.", False)
+        await reply_panel(message, f"❌ {target.mention} jau turi {role_display_name(gang_role)} role.", False)
         return
 
     roles_to_add = [gang_role]
@@ -1071,7 +1076,7 @@ async def on_message(message: discord.Message) -> None:
         role_names = ", ".join(role_display_name(role) for role in roles_to_add)
         await reply_panel(
             message,
-            f"✅ {target.mention} sėkmingai pridėtas į {role_names}.",
+            f"✅ {target.mention} sekmingai pridetas i {role_names}. {gang_member_count_text(gang_role)}",
         )
     except discord.HTTPException:
         await reply_panel(
