@@ -568,6 +568,7 @@ intents.members = True
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 persistent_views_registered = False
+cooldown_sweeper_started = False
 
 
 async def expire_cooldown_now(guild_id: int, user_id: int, expires_at: float) -> bool:
@@ -587,7 +588,13 @@ async def expire_cooldown_now(guild_id: int, user_id: int, expires_at: float) ->
     roles_to_remove = []
     saved_role = guild.get_role(int(entry["roleId"]))
     current_role = find_cooldown_role(guild)
-    for role in (saved_role, current_role):
+    matching_roles = [
+        role
+        for role in guild.roles
+        if "cooldown" in normalize(role.name)
+        and ("3d" in normalize(role.name) or "3 d" in normalize(role.name))
+    ]
+    for role in (saved_role, current_role, *matching_roles):
         if member and role and role in member.roles and role not in roles_to_remove:
             roles_to_remove.append(role)
 
@@ -642,6 +649,24 @@ def schedule_cooldown(guild_id: int, user_id: int, expires_at: float) -> None:
     cooldown_tasks[key] = asyncio.create_task(
         cooldown_worker(guild_id, user_id, expires_at)
     )
+
+
+async def sweep_expired_cooldowns() -> None:
+    while not bot.is_closed():
+        now = time.time()
+        for key, entry in list(state["cooldowns"].items()):
+            try:
+                expires_at = float(entry["expiresAt"])
+                if expires_at <= now:
+                    guild_id_text, user_id_text = key.split(":")
+                    await expire_cooldown_now(
+                        int(guild_id_text),
+                        int(user_id_text),
+                        expires_at,
+                    )
+            except Exception as error:
+                print(f"Cooldown sweep nepavyko sutvarkyti {key}: {error}")
+        await asyncio.sleep(600)
 
 
 async def process_disband_jobs() -> None:
@@ -709,11 +734,14 @@ async def process_disband_jobs() -> None:
 
 @bot.event
 async def on_ready() -> None:
-    global persistent_views_registered
+    global persistent_views_registered, cooldown_sweeper_started
     if not persistent_views_registered:
         bot.add_view(TicketPanelView())
         bot.add_view(TicketCloseView())
         persistent_views_registered = True
+    if not cooldown_sweeper_started:
+        asyncio.create_task(sweep_expired_cooldowns())
+        cooldown_sweeper_started = True
 
     guild_object = discord.Object(id=GUILD_ID)
     synced_commands = await bot.tree.sync(guild=guild_object)
