@@ -19,6 +19,7 @@ CLIENT_ID = os.getenv("CLIENT_ID", "")
 GUILD_ID_TEXT = os.getenv("GUILD_ID", "").strip()
 GANG_TEXT = os.getenv("GANG_ROLE_TEXT", "gauja")
 BOSS_TEXT = os.getenv("BOSS_ROLE_TEXT", "boss")
+BOSS_ROLE_ID = os.getenv("BOSS_ROLE_ID", "").strip()
 RIGHT_HAND_ROLE_NAME = os.getenv("RIGHT_HAND_ROLE_TEXT", "des.ranka")
 BLACKLIST_ROLE_NAME = os.getenv("BLACKLIST_ROLE_TEXT", "black list")
 BLACKLIST_ROLE_ID = os.getenv("BLACKLIST_ROLE_ID", "").strip()
@@ -29,6 +30,7 @@ TICKET_CATEGORY_ID = os.getenv("TICKET_CATEGORY_ID", "").strip()
 TICKET_SUPPORT_ROLE_ID = os.getenv("TICKET_SUPPORT_ROLE_ID", "").strip()
 ROLE_REQUESTS_CHANNEL_ID = os.getenv("ROLE_REQUESTS_CHANNEL_ID", "").strip()
 GANG_MEMBER_LIMIT = int(os.getenv("GANG_MEMBER_LIMIT", "20"))
+RECRUITMENT_CHANNEL_ID = os.getenv("RECRUITMENT_CHANNEL_ID", "").strip()
 
 placeholders = {
     "DISCORD_TOKEN": (TOKEN, "IKLIJUOK_BOTO_TOKENA_CIA"),
@@ -75,6 +77,8 @@ def normalize(text: str) -> str:
 
 
 def role_is_boss(role: discord.Role) -> bool:
+    if BOSS_ROLE_ID.isdigit() and role.id == int(BOSS_ROLE_ID):
+        return True
     name = normalize(role.name)
     return (
         normalize(BOSS_TEXT) in name
@@ -233,6 +237,31 @@ def get_role_requests_channel(guild: discord.Guild) -> discord.TextChannel | Non
         lambda channel: compact(channel.name) == "rolesprasymai",
         guild.text_channels,
     )
+
+
+async def update_member_status(guild: discord.Guild | None = None) -> None:
+    guild = guild or bot.get_guild(GUILD_ID)
+    if guild is None:
+        return
+    member_count = guild.member_count or len(guild.members)
+    await bot.change_presence(
+        activity=discord.Activity(
+            type=discord.ActivityType.watching,
+            name=f"{member_count} zmoniu serveryje",
+        )
+    )
+
+
+def get_recruitment_channel(guild: discord.Guild) -> discord.TextChannel | None:
+    if RECRUITMENT_CHANNEL_ID.isdigit():
+        channel = guild.get_channel(int(RECRUITMENT_CHANNEL_ID))
+        if isinstance(channel, discord.TextChannel):
+            return channel
+    return None
+
+
+def member_has_boss_role(member: discord.Member) -> bool:
+    return any(role_is_boss(role) for role in member.roles)
 
 
 async def reply_panel(
@@ -689,6 +718,7 @@ async def on_ready() -> None:
     guild_object = discord.Object(id=GUILD_ID)
     synced_commands = await bot.tree.sync(guild=guild_object)
     synced_names = ", ".join(f"/{command.name}" for command in synced_commands)
+    await update_member_status()
     print(f"Prisijungta kaip {bot.user}. Užregistruotos komandos: {synced_names}")
 
     for key, entry in list(state["cooldowns"].items()):
@@ -743,10 +773,12 @@ async def on_member_remove(member: discord.Member) -> None:
     else:
         state["gangLeavers"].pop(key, None)
     await save_state()
+    await update_member_status(member.guild)
 
 
 @bot.event
 async def on_member_join(member: discord.Member) -> None:
+    await update_member_status(member.guild)
     key = f"{member.guild.id}:{member.id}"
     roles_to_restore = []
 
@@ -1668,11 +1700,86 @@ async def checkcd(interaction: discord.Interaction) -> None:
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 
+@app_commands.command(
+    name="iesko-nariu",
+    description="Paskelbia gaujos nariu paieskos lentele",
+)
+@app_commands.describe(
+    gaujos_pavadinimas="Gaujos pavadinimas",
+    gaujos_spalva="Gaujos spalva",
+    ieskoma_nariu="Kiek nariu ieskote",
+    reikalavimai="Reikalavimai kandidatams",
+    apie_gauja="Trumpas aprasymas ir kontaktas",
+    galioja_iki="Iki kada galioja skelbimas, pvz. 2026-08-04",
+)
+@app_commands.guilds(discord.Object(id=GUILD_ID))
+async def iesko_nariu(
+    interaction: discord.Interaction,
+    gaujos_pavadinimas: str,
+    gaujos_spalva: str,
+    ieskoma_nariu: int,
+    reikalavimai: str,
+    apie_gauja: str,
+    galioja_iki: str = "nenurodyta",
+) -> None:
+    if interaction.guild is None or not isinstance(interaction.user, discord.Member):
+        return
+    if not member_has_boss_role(interaction.user) and not any(
+        role_is_right_hand(role) for role in interaction.user.roles
+    ):
+        await interaction.response.send_message(
+            "Sia komanda gali naudoti tik boso arba des.ranka role turintis narys.",
+            ephemeral=True,
+        )
+        return
+
+    channel = get_recruitment_channel(interaction.guild)
+    if channel is None:
+        await interaction.response.send_message(
+            "Neradau RECRUITMENT_CHANNEL_ID kanalo. Patikrink Railway Variables.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    embed = discord.Embed(
+        title="Gaujos iesko nariu!",
+        color=discord.Color.green(),
+    )
+    embed.set_author(
+        name=interaction.user.display_name,
+        icon_url=interaction.user.display_avatar.url,
+    )
+    embed.add_field(name="Gaujos pavadinimas", value=gaujos_pavadinimas, inline=True)
+    embed.add_field(name="Bosas", value=interaction.user.mention, inline=True)
+    embed.add_field(name="Gauju spalva", value=gaujos_spalva, inline=True)
+    embed.add_field(
+        name="Ieskoma nariu skaicius",
+        value=f"mes turim {ieskoma_nariu}",
+        inline=False,
+    )
+    embed.add_field(name="Reikalavimai", value=reikalavimai, inline=False)
+    embed.add_field(name="Apie gauja ir kontaktas", value=apie_gauja, inline=False)
+    embed.set_footer(
+        text=(
+            f"Skelbimas galioja iki {galioja_iki} • "
+            f"Paskelbe: {interaction.user.display_name}"
+        )
+    )
+
+    sent = await channel.send(embed=embed)
+    await interaction.followup.send(
+        f"Skelbimas paskelbtas: {sent.jump_url}",
+        ephemeral=True,
+    )
+
+
 bot.tree.add_command(setup_tickets)
 bot.tree.add_command(ticket_panel)
 bot.tree.add_command(ticket_add_member)
 bot.tree.add_command(ticket_add_role)
 bot.tree.add_command(pakeisti_spalva)
 bot.tree.add_command(checkcd)
+bot.tree.add_command(iesko_nariu)
 bot.tree.add_command(disband)
 bot.run(TOKEN)
