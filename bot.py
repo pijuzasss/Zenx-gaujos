@@ -1707,7 +1707,13 @@ async def checkcd(interaction: discord.Interaction) -> None:
                 member = await interaction.guild.fetch_member(int(user_id_text))
             except discord.NotFound:
                 member = None
-        name = member.mention if member else f"<@{user_id_text}>"
+        if member:
+            username = member.name
+            if member.discriminator and member.discriminator != "0":
+                username = f"{member.name}#{member.discriminator}"
+            name = f"{member.display_name} (@{username}) - {member.mention}"
+        else:
+            name = f"Paliko serveri - ID {user_id_text}"
         lines.append(f"{name} - liko {format_remaining(expires_at - now)}")
 
     if cleaned:
@@ -1718,9 +1724,17 @@ async def checkcd(interaction: discord.Interaction) -> None:
         color=discord.Color.orange(),
     )
     if lines:
-        text = "\n".join(lines[:40])
-        if len(lines) > 40:
-            text += f"\n... ir dar {len(lines) - 40}"
+        text = "\n".join(lines)
+        if len(text) > 3900:
+            kept = []
+            total = 0
+            for line in lines:
+                if total + len(line) + 1 > 3800:
+                    break
+                kept.append(line)
+                total += len(line) + 1
+            text = "\n".join(kept)
+            text += f"\n... ir dar {len(lines) - len(kept)} netilpo i lentele"
         embed.description = text
     else:
         embed.description = "Siuo metu aktyviu cooldown nariu nera."
@@ -1783,7 +1797,7 @@ async def iesko_nariu(
     embed.add_field(name="Gauju spalva", value=gaujos_spalva, inline=True)
     embed.add_field(
         name="Ieskoma nariu skaicius",
-        value=f"{ieskoma_nariu}",
+        value=f"mes turim {ieskoma_nariu}",
         inline=False,
     )
     embed.add_field(name="Reikalavimai", value=reikalavimai, inline=False)
