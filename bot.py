@@ -1309,6 +1309,7 @@ async def send_ticket_panel(
         ),
         color=discord.Color(0x2B2D31),
     )
+    embed.set_image(url="attachment://ticket-banner.png")
     return await channel.send(
         embed=embed,
         file=banner_file,
