@@ -43,10 +43,10 @@ missing = [
 ]
 if missing:
     raise RuntimeError(
-        f"Atidaryk .env failą ir pakeisk šias reikšmes tikrais Discord duomenimis: {', '.join(missing)}"
+        f"Atidaryk .env failÄ… ir pakeisk Å¡ias reikÅ¡mes tikrais Discord duomenimis: {', '.join(missing)}"
     )
 if not GUILD_ID_TEXT.isdigit():
-    raise RuntimeError("GUILD_ID turi būti tik skaičiai, pavyzdžiui: GUILD_ID=123456789012345678")
+    raise RuntimeError("GUILD_ID turi bÅ«ti tik skaiÄiai, pavyzdÅ¾iui: GUILD_ID=123456789012345678")
 
 GUILD_ID = int(GUILD_ID_TEXT)
 
@@ -61,14 +61,14 @@ OLD_DATA_FILE = DATA_DIRECTORY / "cooldowns.json"
 
 def normalize(text: str) -> str:
     small_caps = str.maketrans(
-        "ᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘǫʀꜱᴛᴜᴠᴡxʏᴢ",
+        "á´€Ê™á´„á´…á´‡êœ°É¢ÊœÉªá´Šá´‹ÊŸá´É´á´á´˜Ç«Ê€êœ±á´›á´œá´ á´¡xÊá´¢",
         "abcdefghijklmnopqrstuvwxyz",
     )
     decomposed = unicodedata.normalize("NFKD", text.casefold()).translate(small_caps)
     result = []
     for char in decomposed:
         codepoint = ord(char)
-        # Discord rolėse naudojamos 🇦–🇿 regional-indicator raidės.
+        # Discord rolÄ—se naudojamos ðŸ‡¦â€“ðŸ‡¿ regional-indicator raidÄ—s.
         if 0x1F1E6 <= codepoint <= 0x1F1FF:
             result.append(chr(ord("a") + codepoint - 0x1F1E6))
         elif not unicodedata.combining(char):
@@ -181,13 +181,13 @@ def keyword_matches_role(keyword: str, role: discord.Role) -> bool:
 def keywords_match_role(keywords: list[str], role: discord.Role) -> bool:
     if all(keyword_matches_role(keyword, role) for keyword in keywords):
         return True
-    # Atpažįsta ir dviejų žodžių formas, pvz. „tamsiai zalia“.
+    # AtpaÅ¾Ä¯sta ir dviejÅ³ Å¾odÅ¾iÅ³ formas, pvz. â€žtamsiai zaliaâ€œ.
     joined = "".join(compact(keyword) for keyword in keywords)
     return keyword_matches_role(joined, role)
 
 
 def role_display_name(role: discord.Role) -> str:
-    """Gaujos rolę rodo kaip tekstą „Gauja11“, jos nepažymėdamas."""
+    """Gaujos rolÄ™ rodo kaip tekstÄ… â€žGauja11â€œ, jos nepaÅ¾ymÄ—damas."""
     gang_number = re.search(r"gauja\s*(\d+)", normalize(role.name))
     if gang_number:
         return f"Gauja{gang_number.group(1)}"
@@ -211,7 +211,7 @@ def find_cooldown_role(guild: discord.Guild) -> discord.Role | None:
     if exact:
         return exact
 
-    # Atpažįsta ir stilizuotus pavadinimus, pvz. „﹒ᴄᴏᴏʟᴅᴏᴡɴ 3D“.
+    # AtpaÅ¾Ä¯sta ir stilizuotus pavadinimus, pvz. â€žï¹’á´„á´á´ÊŸá´…á´á´¡É´ 3Dâ€œ.
     return discord.utils.find(
         lambda role: "cooldown" in normalize(role.name)
         and ("3d" in normalize(role.name) or "3 d" in normalize(role.name)),
@@ -224,7 +224,7 @@ async def get_or_create_cooldown_role(guild: discord.Guild) -> discord.Role:
     if role:
         return role
     return await guild.create_role(
-        name=COOLDOWN_ROLE_NAME, reason="3 dienų gaujos cooldown rolė"
+        name=COOLDOWN_ROLE_NAME, reason="3 dienÅ³ gaujos cooldown rolÄ—"
     )
 
 
@@ -280,18 +280,18 @@ async def reply_panel(
 
 TICKET_TYPES = {
     "gang_complaint": (
-        "🚨 Gaujų skundas",
-        "Pateikite skundą dėl gaujos ar jos narių.",
+        "ðŸš¨ GaujÅ³ skundas",
+        "Pateikite skundÄ… dÄ—l gaujos ar jos nariÅ³.",
         "skundas",
     ),
     "pov_request": (
-        "🎥 POV Prašymas",
-        "Paprašykite POV / klipo iš kitos gaujos.",
+        "ðŸŽ¥ POV PraÅ¡ymas",
+        "PapraÅ¡ykite POV / klipo iÅ¡ kitos gaujos.",
         "pov",
     ),
     "help": (
-        "❓ Pagalba",
-        "Užduokite klausimą arba paprašykite pagalbos.",
+        "â“ Pagalba",
+        "UÅ¾duokite klausimÄ… arba papraÅ¡ykite pagalbos.",
         "pagalba",
     ),
 }
@@ -338,9 +338,9 @@ class TicketCloseView(discord.ui.View):
         super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="Uždaryti ticket",
+        label="UÅ¾daryti ticket",
         style=discord.ButtonStyle.danger,
-        emoji="🔒",
+        emoji="ðŸ”’",
         custom_id="ticket:close:v1",
     )
     async def close_ticket(
@@ -350,7 +350,7 @@ class TicketCloseView(discord.ui.View):
         channel = interaction.channel
         if not isinstance(channel, discord.TextChannel) or not channel.topic:
             await interaction.response.send_message(
-                "Šis kanalas nėra ticket.", ephemeral=True
+                "Å is kanalas nÄ—ra ticket.", ephemeral=True
             )
             return
 
@@ -367,39 +367,39 @@ class TicketCloseView(discord.ui.View):
         can_manage = interaction.permissions.manage_channels
         if not is_owner and not is_support and not can_manage:
             await interaction.response.send_message(
-                "Šį ticket gali uždaryti jo autorius arba darbuotojas.", ephemeral=True
+                "Å Ä¯ ticket gali uÅ¾daryti jo autorius arba darbuotojas.", ephemeral=True
             )
             return
 
-        await interaction.response.send_message("🔒 Ticket uždaromas po 3 sekundžių.")
+        await interaction.response.send_message("ðŸ”’ Ticket uÅ¾daromas po 3 sekundÅ¾iÅ³.")
         await asyncio.sleep(3)
-        await channel.delete(reason=f"Ticket uždarė {interaction.user}")
+        await channel.delete(reason=f"Ticket uÅ¾darÄ— {interaction.user}")
 
 
 class TicketTypeSelect(discord.ui.Select):
     def __init__(self) -> None:
         options = [
             discord.SelectOption(
-                label="Gaujų skundas",
-                description="Pateikti skundą dėl gaujos ar jos narių",
-                emoji="🚨",
+                label="GaujÅ³ skundas",
+                description="Pateikti skundÄ… dÄ—l gaujos ar jos nariÅ³",
+                emoji="ðŸš¨",
                 value="gang_complaint",
             ),
             discord.SelectOption(
-                label="POV Prašymas",
-                description="Paprašyti POV / klipo iš kitos gaujos",
-                emoji="🎥",
+                label="POV PraÅ¡ymas",
+                description="PapraÅ¡yti POV / klipo iÅ¡ kitos gaujos",
+                emoji="ðŸŽ¥",
                 value="pov_request",
             ),
             discord.SelectOption(
                 label="Pagalba",
                 description="Klausimai ir kita pagalba",
-                emoji="❓",
+                emoji="â“",
                 value="help",
             ),
         ]
         super().__init__(
-            placeholder="Pasirinkite tipą",
+            placeholder="Pasirinkite kategorija",
             min_values=1,
             max_values=1,
             options=options,
@@ -420,7 +420,7 @@ class TicketTypeSelect(discord.ui.Select):
         )
         if existing:
             await interaction.followup.send(
-                f"Jau turite atidarytą ticket: {existing.mention}", ephemeral=True
+                f"Jau turite atidarytÄ… ticket: {existing.mention}", ephemeral=True
             )
             return
 
@@ -455,13 +455,13 @@ class TicketTypeSelect(discord.ui.Select):
             category=category,
             overwrites=overwrites,
             topic=f"ticket-owner:{interaction.user.id};type:{ticket_type}",
-            reason=f"Ticket sukūrė {interaction.user}",
+            reason=f"Ticket sukÅ«rÄ— {interaction.user}",
         )
         embed = discord.Embed(
             title=title,
             description=(
-                f"{interaction.user.mention}, aprašykite situaciją kuo išsamiau.\n\n"
-                f"{description}\n\nDarbuotojai atsakys, kai galės."
+                f"{interaction.user.mention}, apraÅ¡ykite situacijÄ… kuo iÅ¡samiau.\n\n"
+                f"{description}\n\nDarbuotojai atsakys, kai galÄ—s."
             ),
             color=discord.Color.red(),
         )
@@ -481,7 +481,7 @@ class TicketPanelView(discord.ui.View):
 
 
 def ticket_access(interaction: discord.Interaction) -> tuple[bool, bool, bool]:
-    """Grąžina: ar ticket kanalas, ar autorius, ar support/kanalų valdytojas."""
+    """GrÄ…Å¾ina: ar ticket kanalas, ar autorius, ar support/kanalÅ³ valdytojas."""
     channel = interaction.channel
     if not isinstance(channel, discord.TextChannel) or not channel.topic:
         return False, False, False
@@ -615,7 +615,7 @@ async def cooldown_worker(guild_id: int, user_id: int, expires_at: float) -> Non
                 member = None
         role = guild.get_role(int(entry["roleId"]))
         if member and role and role in member.roles:
-            await member.remove_roles(role, reason="3 dienų cooldown baigėsi")
+            await member.remove_roles(role, reason="3 dienÅ³ cooldown baigÄ—si")
 
         state["cooldowns"].pop(key, None)
         await save_state()
@@ -668,7 +668,7 @@ async def process_disband_jobs() -> None:
             cooldown_role = guild.get_role(int(job["cooldownRoleId"]))
             bot_member = guild.me
             if cooldown_role is None or bot_member is None:
-                print(f"Disband darbas {job_id} laukia: nerasta cooldown arba boto rolė.")
+                print(f"Disband darbas {job_id} laukia: nerasta cooldown arba boto rolÄ—.")
                 continue
 
             for user_id_text in list(job["pendingMemberIds"]):
@@ -701,12 +701,12 @@ async def process_disband_jobs() -> None:
                         if removable:
                             await member.remove_roles(
                                 *removable,
-                            reason=f"Tęsiamas gaujos išformavimas ({job['requestedBy']})",
+                            reason=f"TÄ™siamas gaujos iÅ¡formavimas ({job['requestedBy']})",
                             )
                         if cooldown_role not in member.roles:
                             await member.add_roles(
                                 cooldown_role,
-                            reason="3 dienų cooldown po gaujos išformavimo",
+                            reason="3 dienÅ³ cooldown po gaujos iÅ¡formavimo",
                             )
                     await asyncio.wait_for(disband_member(), timeout=30)
                     schedule_cooldown(guild.id, user_id, job["expiresAt"])
@@ -736,7 +736,7 @@ async def on_ready() -> None:
     synced_commands = await bot.tree.sync(guild=guild_object)
     synced_names = ", ".join(f"/{command.name}" for command in synced_commands)
     await update_member_status()
-    print(f"Prisijungta kaip {bot.user}. Užregistruotos komandos: {synced_names}")
+    print(f"Prisijungta kaip {bot.user}. UÅ¾registruotos komandos: {synced_names}")
 
     for key, entry in list(state["cooldowns"].items()):
         guild_id, user_id = map(int, key.split(":"))
@@ -758,7 +758,7 @@ async def on_ready() -> None:
                     member = None
             role = guild.get_role(int(entry["roleId"]))
             if member and (role is None or role not in member.roles):
-                # Rolę rankiniu būdu nuėmė administratorius – termino neatkuriame.
+                # RolÄ™ rankiniu bÅ«du nuÄ—mÄ— administratorius â€“ termino neatkuriame.
                 state["cooldowns"].pop(key, None)
                 await save_state()
                 continue
@@ -768,7 +768,7 @@ async def on_ready() -> None:
 
 @bot.event
 async def on_member_remove(member: discord.Member) -> None:
-    """Išsaugo tik apsaugines roles; gaujos ir kitos rolės nėra saugomos."""
+    """IÅ¡saugo tik apsaugines roles; gaujos ir kitos rolÄ—s nÄ—ra saugomos."""
     key = f"{member.guild.id}:{member.id}"
     blacklist_role = discord.utils.find(role_is_blacklist, member.roles)
     if blacklist_role:
@@ -841,10 +841,10 @@ async def on_member_join(member: discord.Member) -> None:
         try:
             await member.add_roles(
                 *roles_to_restore,
-                reason="Atkurtos BLACKLIST / cooldown rolės nariui sugrįžus",
+                reason="Atkurtos BLACKLIST / cooldown rolÄ—s nariui sugrÄ¯Å¾us",
             )
         except discord.HTTPException as error:
-            print(f"Nepavyko atkurti rolių sugrįžusiam nariui {member}: {error}")
+            print(f"Nepavyko atkurti roliÅ³ sugrÄ¯Å¾usiam nariui {member}: {error}")
 
 
 @bot.event
@@ -875,7 +875,7 @@ async def on_member_update(before: discord.Member, after: discord.Member) -> Non
         }
         await save_state()
         schedule_cooldown(after.guild.id, after.id, expires_at)
-        print(f"Nariui {after} automatiškai pradėtas 3 dienų cooldown.")
+        print(f"Nariui {after} automatiÅ¡kai pradÄ—tas 3 dienÅ³ cooldown.")
 
     entry = state["cooldowns"].get(key)
     if not entry:
@@ -888,7 +888,7 @@ async def on_member_update(before: discord.Member, after: discord.Member) -> Non
         if task:
             task.cancel()
         await save_state()
-        print(f"Cooldown rankiniu būdu atšauktas nariui {after}.")
+        print(f"Cooldown rankiniu bÅ«du atÅ¡auktas nariui {after}.")
 
 
 @bot.event
@@ -911,7 +911,7 @@ async def on_message(message: discord.Message) -> None:
 
     role_requests_channel = get_role_requests_channel(message.guild)
     if role_requests_channel is None or message.channel.id != role_requests_channel.id:
-        # Už šio kanalo ribų komanda ignoruojama: neatsakome ir nekeičiame rolių.
+        # UÅ¾ Å¡io kanalo ribÅ³ komanda ignoruojama: neatsakome ir nekeiÄiame roliÅ³.
         return
 
     target = message.mentions[0]
@@ -930,8 +930,8 @@ async def on_message(message: discord.Message) -> None:
 
     gang_role = None
     if gang_keywords:
-        # Pirmiausia renkamės autoriaus turimą gaują – taip nepasirenkama svetima
-        # panašaus pavadinimo rolė iš bendro serverio rolių sąrašo.
+        # Pirmiausia renkamÄ—s autoriaus turimÄ… gaujÄ… â€“ taip nepasirenkama svetima
+        # panaÅ¡aus pavadinimo rolÄ— iÅ¡ bendro serverio roliÅ³ sÄ…raÅ¡o.
         gang_role = discord.utils.find(
             lambda role: keywords_match_role(gang_keywords, role),
             author_gang_roles,
@@ -946,7 +946,7 @@ async def on_message(message: discord.Message) -> None:
         if gang_role is None:
             await reply_panel(
                 message,
-                f"❌ Neradau gaujos rolės pagal pavadinimą `{ ' '.join(gang_keywords) }`.",
+                f"âŒ Neradau gaujos rolÄ—s pagal pavadinimÄ… `{ ' '.join(gang_keywords) }`.",
                 False,
             )
             return
@@ -956,17 +956,17 @@ async def on_message(message: discord.Message) -> None:
     if gang_role is None:
         await reply_panel(
             message,
-            "❌ Neradau gaujos rolės. Parašyk gaujos pavadinimą, pvz. `@narys on raudoni`.",
+            "âŒ Neradau gaujos rolÄ—s. ParaÅ¡yk gaujos pavadinimÄ…, pvz. `@narys on raudoni`.",
             False,
         )
         return
 
     if action == "off":
-        # Svetimos gaujos vadovas ar dešinė ranka negali nuimti kitos gaujos rolių.
+        # Svetimos gaujos vadovas ar deÅ¡inÄ— ranka negali nuimti kitos gaujos roliÅ³.
         if gang_role not in target.roles:
             await reply_panel(
                 message,
-                "❌ Šis narys neturi tokios pačios gaujos rolės, todėl niekas nebuvo nuimta.",
+                "âŒ Å is narys neturi tokios paÄios gaujos rolÄ—s, todÄ—l niekas nebuvo nuimta.",
                 False,
             )
             return
@@ -992,7 +992,7 @@ async def on_message(message: discord.Message) -> None:
 
             expires_at = time.time() + COOLDOWN_SECONDS
             cooldown_key = f"{message.guild.id}:{target.id}"
-            # Terminą įrašome prieš Discord pakeitimus, kad jis išliktų netikėtai išjungus botą.
+            # TerminÄ… Ä¯raÅ¡ome prieÅ¡ Discord pakeitimus, kad jis iÅ¡liktÅ³ netikÄ—tai iÅ¡jungus botÄ….
             state["cooldowns"][cooldown_key] = {
                 "roleId": str(cooldown_role.id),
                 "expiresAt": expires_at,
@@ -1002,21 +1002,21 @@ async def on_message(message: discord.Message) -> None:
             if removable_roles:
                 await target.remove_roles(
                     *removable_roles,
-                    reason=f"Iš gaujos pašalino {message.author} su @narys off",
+                    reason=f"IÅ¡ gaujos paÅ¡alino {message.author} su @narys off",
                 )
             await target.add_roles(
                 cooldown_role,
-                reason="3 dienų cooldown po pašalinimo iš gaujos",
+                reason="3 dienÅ³ cooldown po paÅ¡alinimo iÅ¡ gaujos",
             )
             schedule_cooldown(message.guild.id, target.id, expires_at)
             await reply_panel(
                 message,
-                f"✅ {target.mention} pasalintas is {role_display_name(gang_role)}. {gang_member_count_text(gang_role)}",
+                f"âœ… {target.mention} pasalintas is {role_display_name(gang_role)}. {gang_member_count_text(gang_role)}",
             )
         except discord.HTTPException:
             await reply_panel(
                 message,
-                "❌ Nepavyko pakeisti rolių. Patikrink boto teises ir rolių hierarchiją.",
+                "âŒ Nepavyko pakeisti roliÅ³. Patikrink boto teises ir roliÅ³ hierarchijÄ….",
                 False,
             )
         return
@@ -1028,16 +1028,16 @@ async def on_message(message: discord.Message) -> None:
     if not author_is_boss and not author_is_right_hand:
         await reply_panel(
             message,
-            "❌ `on` komandą gali naudoti tik gaujos boss arba `des.ranka` rolę turintis narys.",
+            "âŒ `on` komandÄ… gali naudoti tik gaujos boss arba `des.ranka` rolÄ™ turintis narys.",
             False,
         )
         return
 
-    # Ir boss, ir dešinė ranka gali priimti narius tik į savo gaują.
+    # Ir boss, ir deÅ¡inÄ— ranka gali priimti narius tik Ä¯ savo gaujÄ….
     if gang_role not in author_gang_roles:
         await reply_panel(
             message,
-            "❌ Gali priimti narius tik į savo gaują.",
+            "âŒ Gali priimti narius tik Ä¯ savo gaujÄ….",
             False,
         )
         return
@@ -1054,8 +1054,8 @@ async def on_message(message: discord.Message) -> None:
         or (saved_cooldown_role and saved_cooldown_role in target.roles)
     )
 
-    # Jei adminas rankiniu būdu nuėmė rolę, laikome cooldown atšauktu ir
-    # pašaliname seną terminą, kad jis nebūtų atkurtas po Railway deploy.
+    # Jei adminas rankiniu bÅ«du nuÄ—mÄ— rolÄ™, laikome cooldown atÅ¡auktu ir
+    # paÅ¡aliname senÄ… terminÄ…, kad jis nebÅ«tÅ³ atkurtas po Railway deploy.
     if cooldown_entry and not has_cooldown_role:
         state["cooldowns"].pop(cooldown_key, None)
         cooldown_task = cooldown_tasks.pop(cooldown_key, None)
@@ -1065,14 +1065,14 @@ async def on_message(message: discord.Message) -> None:
         cooldown_entry = None
 
     if has_cooldown_role:
-        await reply_panel(message, "❌ Šiam nariui dar aktyvus 3 dienų cooldown.", False)
+        await reply_panel(message, "âŒ Å iam nariui dar aktyvus 3 dienÅ³ cooldown.", False)
         return
 
     blacklist_role = discord.utils.find(
         role_is_blacklist, target.roles
     )
     if blacklist_role:
-        await reply_panel(message, "❌ Šis narys turi black list rolę.", False)
+        await reply_panel(message, "âŒ Å is narys turi black list rolÄ™.", False)
         return
 
     target_gang_roles = [
@@ -1085,13 +1085,13 @@ async def on_message(message: discord.Message) -> None:
     if different_gang_roles:
         await reply_panel(
             message,
-            "❌ Šis narys jau turi kitos gaujos rolę, todėl jam nieko neuždėjau.",
+            "âŒ Å is narys jau turi kitos gaujos rolÄ™, todÄ—l jam nieko neuÅ¾dÄ—jau.",
             False,
         )
         return
 
     if not right_hand_requested and gang_role in target.roles:
-        await reply_panel(message, f"❌ {target.mention} jau turi {role_display_name(gang_role)} role.", False)
+        await reply_panel(message, f"âŒ {target.mention} jau turi {role_display_name(gang_role)} role.", False)
         return
 
     roles_to_add = [gang_role]
@@ -1109,28 +1109,28 @@ async def on_message(message: discord.Message) -> None:
         if right_hand_role is None:
             await reply_panel(
                 message,
-                f"❌ Neradau `{RIGHT_HAND_ROLE_NAME}` rolės.",
+                f"âŒ Neradau `{RIGHT_HAND_ROLE_NAME}` rolÄ—s.",
                 False,
             )
             return
-        # Jei gaujos dar neturi – uždedame gaują ir dešinę ranką; jei turi tą pačią – tik dešinę ranką.
+        # Jei gaujos dar neturi â€“ uÅ¾dedame gaujÄ… ir deÅ¡inÄ™ rankÄ…; jei turi tÄ… paÄiÄ… â€“ tik deÅ¡inÄ™ rankÄ….
         roles_to_add = [right_hand_role]
         if gang_role not in target.roles:
             roles_to_add.insert(0, gang_role)
 
     try:
         await target.add_roles(
-            *roles_to_add, reason=f"Roles paskyrė {message.author} su on komanda"
+            *roles_to_add, reason=f"Roles paskyrÄ— {message.author} su on komanda"
         )
         role_names = ", ".join(role_display_name(role) for role in roles_to_add)
         await reply_panel(
             message,
-            f"✅ {target.mention} sekmingai pridetas i {role_names}. {gang_member_count_text(gang_role)}",
+            f"âœ… {target.mention} sekmingai pridetas i {role_names}. {gang_member_count_text(gang_role)}",
         )
     except discord.HTTPException:
         await reply_panel(
             message,
-            "❌ Nepavyko uždėti rolės. Patikrink boto teises ir rolių hierarchiją.",
+            "âŒ Nepavyko uÅ¾dÄ—ti rolÄ—s. Patikrink boto teises ir roliÅ³ hierarchijÄ….",
             False,
         )
 
@@ -1146,7 +1146,7 @@ async def apply_gang_color_change(
         if bot_member is None:
             return 0, ["Nepavyko rasti boto nario serveryje"]
         if old_role >= bot_member.top_role or new_role >= bot_member.top_role:
-            return 0, ["Boto rolė turi būti aukščiau už abi gaujų roles"]
+            return 0, ["Boto rolÄ— turi bÅ«ti aukÅ¡Äiau uÅ¾ abi gaujÅ³ roles"]
 
         members = list(old_role.members)
         completed = 0
@@ -1157,12 +1157,12 @@ async def apply_gang_color_change(
                     if new_role not in member.roles:
                         await member.add_roles(
                             new_role,
-                            reason=f"Gaujos spalvą pakeitė {requested_by}",
+                            reason=f"Gaujos spalvÄ… pakeitÄ— {requested_by}",
                         )
                     if old_role in member.roles:
                         await member.remove_roles(
                             old_role,
-                            reason=f"Gaujos spalvą pakeitė {requested_by}",
+                            reason=f"Gaujos spalvÄ… pakeitÄ— {requested_by}",
                         )
 
                 await asyncio.wait_for(change_member_roles(), timeout=30)
@@ -1184,13 +1184,13 @@ class ColorChangeConfirmView(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.requester_id:
             await interaction.response.send_message(
-                "Šį pasirinkimą gali patvirtinti tik komandą paleidęs administratorius.",
+                "Å Ä¯ pasirinkimÄ… gali patvirtinti tik komandÄ… paleidÄ™s administratorius.",
                 ephemeral=True,
             )
             return False
         return True
 
-    @discord.ui.button(label="Tęsti keitimą", style=discord.ButtonStyle.danger, emoji="⚠️")
+    @discord.ui.button(label="TÄ™sti keitimÄ…", style=discord.ButtonStyle.danger, emoji="âš ï¸")
     async def confirm(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -1202,13 +1202,13 @@ class ColorChangeConfirmView(discord.ui.View):
         new_role = guild.get_role(self.new_role_id)
         if old_role is None or new_role is None:
             await interaction.response.edit_message(
-                content="Viena iš gaujos rolių buvo ištrinta. Keitimas atšauktas.",
+                content="Viena iÅ¡ gaujos roliÅ³ buvo iÅ¡trinta. Keitimas atÅ¡auktas.",
                 embed=None,
                 view=None,
             )
             return
         await interaction.response.edit_message(
-            content="⏳ Gaujos spalva keičiama, palaukite...",
+            content="â³ Gaujos spalva keiÄiama, palaukite...",
             embed=None,
             view=None,
         )
@@ -1216,46 +1216,46 @@ class ColorChangeConfirmView(discord.ui.View):
             guild, old_role, new_role, interaction.user
         )
         failure_text = (
-            f"\nNepavyko pakeisti {len(failures)} narių: {', '.join(failures[:10])}"
+            f"\nNepavyko pakeisti {len(failures)} nariÅ³: {', '.join(failures[:10])}"
             if failures
             else ""
         )
         await interaction.edit_original_response(
             content=(
-                f"✅ Perkelta narių: **{completed}**. "
-                f"`{old_role.name}` → `{new_role.name}`.\n"
-                "Boss, des.ranka ir visos kitos rolės paliktos nepakeistos."
+                f"âœ… Perkelta nariÅ³: **{completed}**. "
+                f"`{old_role.name}` â†’ `{new_role.name}`.\n"
+                "Boss, des.ranka ir visos kitos rolÄ—s paliktos nepakeistos."
                 f"{failure_text}"
             ),
             embed=None,
             view=None,
         )
 
-    @discord.ui.button(label="Atšaukti", style=discord.ButtonStyle.secondary, emoji="✖️")
+    @discord.ui.button(label="AtÅ¡aukti", style=discord.ButtonStyle.secondary, emoji="âœ–ï¸")
     async def cancel(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         del button
         await interaction.response.edit_message(
-            content="Spalvos keitimas atšauktas.", embed=None, view=None
+            content="Spalvos keitimas atÅ¡auktas.", embed=None, view=None
         )
 
 
 async def handle_disband(interaction: discord.Interaction, gauja: discord.Role) -> None:
     if not interaction.permissions.manage_roles:
         await interaction.response.send_message(
-            "Šiai komandai reikia Manage Roles teisės.", ephemeral=True
+            "Å iai komandai reikia Manage Roles teisÄ—s.", ephemeral=True
         )
         return
     await interaction.response.defer(ephemeral=True)
     guild = interaction.guild
     if guild is None or gauja == guild.default_role or gauja.managed:
-        await interaction.followup.send("Šios rolės negalima išformuoti.", ephemeral=True)
+        await interaction.followup.send("Å ios rolÄ—s negalima iÅ¡formuoti.", ephemeral=True)
         return
 
     cooldown_role = await get_or_create_cooldown_role(guild)
 
-    # Užkrauname visus serverio narius, kad disband nepraleistų necache'intų narių.
+    # UÅ¾krauname visus serverio narius, kad disband nepraleistÅ³ necache'intÅ³ nariÅ³.
     try:
         await asyncio.wait_for(guild.chunk(cache=True), timeout=10)
     except asyncio.TimeoutError:
@@ -1288,7 +1288,7 @@ async def handle_disband(interaction: discord.Interaction, gauja: discord.Role) 
 
     remaining = len(state["disbandJobs"].get(job_id, {}).get("pendingMemberIds", []))
     await interaction.followup.send(
-        f"Išformuota: {len(member_ids) - remaining}/{len(member_ids)} narių. "
+        f"IÅ¡formuota: {len(member_ids) - remaining}/{len(member_ids)} nariÅ³. "
         f"Cooldown: {COOLDOWN_SECONDS / 3600:g} val.",
         ephemeral=True,
     )
@@ -1303,14 +1303,14 @@ async def send_ticket_panel(
         description=(
             "**Sveikas! Jeigu atsidurete cia, greiciausiai turite klausimu arba "
             "susidurete su problema, kuriai reikalinga musu pagalba.**\n\n"
-            "Noredami pradeti, pasirinkite viena is zemiau esanciu kategoriju, "
+            "> Noredami pradeti, pasirinkite viena is zemiau esanciu kategoriju, "
             "kuri geriausiai atitinka jusu situacija. Kuo tiksliau aprasysite "
-            "savo problema, tuo greiciau ir efektyviau galesime jums padeti.\n\n"
-            "Musu administracijos komanda perziures jusu uzklausa ir susisieks "
+            "savo problema, tuo greiciau ir efektyviau galesime jums padeti.\n"
+            "> Musu administracijos komanda perziures jusu uzklausa ir susisieks "
             "su jumis kaip imanoma greiciau.\n\n"
             "**Dekojame uz kantrybe ir linkime malonios dienos! ❤️**"
         ),
-        color=discord.Color.red(),
+        color=discord.Color(0x2B2D31),
     )
     embed.set_image(url="attachment://ticket-banner.png")
     return await channel.send(
@@ -1322,11 +1322,11 @@ async def send_ticket_panel(
 
 @app_commands.command(
     name="pakeisti-spalva",
-    description="Perkelia visus vienos gaujos narius į kitos spalvos gaują",
+    description="Perkelia visus vienos gaujos narius Ä¯ kitos spalvos gaujÄ…",
 )
 @app_commands.describe(
-    sena_gauja="Dabartinė gaujos rolė",
-    nauja_gauja="Nauja gaujos spalvos rolė",
+    sena_gauja="DabartinÄ— gaujos rolÄ—",
+    nauja_gauja="Nauja gaujos spalvos rolÄ—",
 )
 @app_commands.default_permissions(manage_roles=True)
 @app_commands.guilds(discord.Object(id=GUILD_ID))
@@ -1337,14 +1337,14 @@ async def pakeisti_spalva(
 ) -> None:
     if not interaction.permissions.manage_roles:
         await interaction.response.send_message(
-            "Šiai komandai reikia Manage Roles teisės.", ephemeral=True
+            "Å iai komandai reikia Manage Roles teisÄ—s.", ephemeral=True
         )
         return
     if interaction.guild is None:
         return
     if sena_gauja == nauja_gauja:
         await interaction.response.send_message(
-            "Sena ir nauja gaujos rolės negali būti vienodos.", ephemeral=True
+            "Sena ir nauja gaujos rolÄ—s negali bÅ«ti vienodos.", ephemeral=True
         )
         return
     invalid_role = any(
@@ -1356,7 +1356,7 @@ async def pakeisti_spalva(
     )
     if invalid_role:
         await interaction.response.send_message(
-            "Pasirink abi tikras gaujų roles (pvz. `// ŽALIA // GAUJA7`), ne boss ar integracijos rolę.",
+            "Pasirink abi tikras gaujÅ³ roles (pvz. `// Å½ALIA // GAUJA7`), ne boss ar integracijos rolÄ™.",
             ephemeral=True,
         )
         return
@@ -1365,7 +1365,7 @@ async def pakeisti_spalva(
     try:
         await asyncio.wait_for(interaction.guild.chunk(cache=True), timeout=10)
     except asyncio.TimeoutError:
-        print("Narių sąrašo užkrovimas užtruko per ilgai; naudojamas esamas cache.")
+        print("NariÅ³ sÄ…raÅ¡o uÅ¾krovimas uÅ¾truko per ilgai; naudojamas esamas cache.")
     target_members = list(nauja_gauja.members)
     if target_members:
         preview = ", ".join(str(member) for member in target_members[:10])
@@ -1375,11 +1375,11 @@ async def pakeisti_spalva(
             else ""
         )
         warning = discord.Embed(
-            title="⚠️ Naujoje gaujoje jau yra žmonių",
+            title="âš ï¸ Naujoje gaujoje jau yra Å¾moniÅ³",
             description=(
-                f"Rolę `{nauja_gauja.name}` jau turi **{len(target_members)}** narių.\n"
+                f"RolÄ™ `{nauja_gauja.name}` jau turi **{len(target_members)}** nariÅ³.\n"
                 f"Nariai: {preview}{extra}\n\n"
-                f"Ar tikrai norite perkelti visus iš `{sena_gauja.name}`?"
+                f"Ar tikrai norite perkelti visus iÅ¡ `{sena_gauja.name}`?"
             ),
             color=discord.Color.orange(),
         )
@@ -1393,7 +1393,7 @@ async def pakeisti_spalva(
         return
 
     status_message = await interaction.followup.send(
-        "⏳ Gaujos spalva keičiama, palaukite...",
+        "â³ Gaujos spalva keiÄiama, palaukite...",
         ephemeral=True,
         wait=True,
     )
@@ -1401,24 +1401,24 @@ async def pakeisti_spalva(
         interaction.guild, sena_gauja, nauja_gauja, interaction.user
     )
     failure_text = (
-        f" Nepavyko pakeisti {len(failures)} narių: {', '.join(failures[:10])}."
+        f" Nepavyko pakeisti {len(failures)} nariÅ³: {', '.join(failures[:10])}."
         if failures
         else ""
     )
     await status_message.edit(
         content=(
-        f"✅ Perkelta narių: **{completed}**. "
-        f"`{sena_gauja.name}` → `{nauja_gauja.name}`. "
-        f"Boss, des.ranka ir kitos rolės paliktos.{failure_text}"
+        f"âœ… Perkelta nariÅ³: **{completed}**. "
+        f"`{sena_gauja.name}` â†’ `{nauja_gauja.name}`. "
+        f"Boss, des.ranka ir kitos rolÄ—s paliktos.{failure_text}"
         )
     )
 
 
 @app_commands.command(
     name="ticket-add-member",
-    description="Prideda žmogų į dabartinį ticket kanalą",
+    description="Prideda Å¾mogÅ³ Ä¯ dabartinÄ¯ ticket kanalÄ…",
 )
-@app_commands.describe(member="Žmogus, kurį norite pridėti į ticket")
+@app_commands.describe(member="Å½mogus, kurÄ¯ norite pridÄ—ti Ä¯ ticket")
 @app_commands.guilds(discord.Object(id=GUILD_ID))
 async def ticket_add_member(
     interaction: discord.Interaction, member: discord.Member
@@ -1426,12 +1426,12 @@ async def ticket_add_member(
     is_ticket, is_owner, is_staff = ticket_access(interaction)
     if not is_ticket:
         await interaction.response.send_message(
-            "Šią komandą galima naudoti tik ticket kanale.", ephemeral=True
+            "Å iÄ… komandÄ… galima naudoti tik ticket kanale.", ephemeral=True
         )
         return
     if not is_owner and not is_staff:
         await interaction.response.send_message(
-            "Žmogų gali pridėti ticket autorius arba darbuotojas.", ephemeral=True
+            "Å½mogÅ³ gali pridÄ—ti ticket autorius arba darbuotojas.", ephemeral=True
         )
         return
     channel = interaction.channel
@@ -1441,18 +1441,18 @@ async def ticket_add_member(
         send_messages=True,
         read_message_history=True,
         attach_files=True,
-        reason=f"Į ticket pridėjo {interaction.user}",
+        reason=f"Ä® ticket pridÄ—jo {interaction.user}",
     )
     await interaction.response.send_message(
-        f"✅ {member.mention} pridėtas į ticket."
+        f"âœ… {member.mention} pridÄ—tas Ä¯ ticket."
     )
 
 
 @app_commands.command(
     name="ticket-add-role",
-    description="Prideda rolę į dabartinį ticket kanalą",
+    description="Prideda rolÄ™ Ä¯ dabartinÄ¯ ticket kanalÄ…",
 )
-@app_commands.describe(role="Rolė, kurią norite pridėti į ticket")
+@app_commands.describe(role="RolÄ—, kuriÄ… norite pridÄ—ti Ä¯ ticket")
 @app_commands.guilds(discord.Object(id=GUILD_ID))
 async def ticket_add_role(
     interaction: discord.Interaction, role: discord.Role
@@ -1460,18 +1460,18 @@ async def ticket_add_role(
     is_ticket, _is_owner, is_staff = ticket_access(interaction)
     if not is_ticket:
         await interaction.response.send_message(
-            "Šią komandą galima naudoti tik ticket kanale.", ephemeral=True
+            "Å iÄ… komandÄ… galima naudoti tik ticket kanale.", ephemeral=True
         )
         return
     if not is_staff:
         await interaction.response.send_message(
-            "Rolę gali pridėti tik support darbuotojas arba kanalų valdytojas.",
+            "RolÄ™ gali pridÄ—ti tik support darbuotojas arba kanalÅ³ valdytojas.",
             ephemeral=True,
         )
         return
     if interaction.guild is None or role == interaction.guild.default_role:
         await interaction.response.send_message(
-            "Saugumo sumetimais @everyone rolės pridėti negalima.", ephemeral=True
+            "Saugumo sumetimais @everyone rolÄ—s pridÄ—ti negalima.", ephemeral=True
         )
         return
     channel = interaction.channel
@@ -1481,23 +1481,23 @@ async def ticket_add_role(
         send_messages=True,
         read_message_history=True,
         attach_files=True,
-        reason=f"Į ticket rolę pridėjo {interaction.user}",
+        reason=f"Ä® ticket rolÄ™ pridÄ—jo {interaction.user}",
     )
     await interaction.response.send_message(
-        f"✅ Rolė {role.mention} pridėta į ticket.",
+        f"âœ… RolÄ— {role.mention} pridÄ—ta Ä¯ ticket.",
         allowed_mentions=discord.AllowedMentions(roles=False),
     )
 
 
 @app_commands.command(
     name="setup-tickets",
-    description="Automatiškai sukuria visą ticket sistemą",
+    description="AutomatiÅ¡kai sukuria visÄ… ticket sistemÄ…",
 )
 @app_commands.describe(
-    banner="Pagalbos centro bannerio paveikslėlis",
+    banner="Pagalbos centro bannerio paveikslÄ—lis",
     kanalas="Kanalas, kuriame paskelbti ticket lentele",
     kategorija="Kategorija, kurioje bus kuriami visi ticketai",
-    support_role="Darbuotojų rolė, kuri matys ir atsakys į ticketus",
+    support_role="DarbuotojÅ³ rolÄ—, kuri matys ir atsakys Ä¯ ticketus",
 )
 @app_commands.guilds(discord.Object(id=GUILD_ID))
 async def setup_tickets(
@@ -1513,13 +1513,13 @@ async def setup_tickets(
         or interaction.permissions.administrator
     ):
         await interaction.response.send_message(
-            "Šiai komandai reikia Manage Channels arba Manage Roles teisės.",
+            "Å iai komandai reikia Manage Channels arba Manage Roles teisÄ—s.",
             ephemeral=True,
         )
         return
     if not banner.content_type or not banner.content_type.startswith("image/"):
         await interaction.response.send_message(
-            "Banneris turi būti paveikslėlio failas.", ephemeral=True
+            "Banneris turi bÅ«ti paveikslÄ—lio failas.", ephemeral=True
         )
         return
 
@@ -1560,19 +1560,19 @@ async def setup_tickets(
     await save_state()
     panel = await send_ticket_panel(kanalas, banner)
     await interaction.followup.send(
-        f"Ticket sistema paruošta: {panel.jump_url}\n"
-        f"Kategorija: `{kategorija.name}` • Darbuotojai: {support_role.mention}",
+        f"Ticket sistema paruoÅ¡ta: {panel.jump_url}\n"
+        f"Kategorija: `{kategorija.name}` â€¢ Darbuotojai: {support_role.mention}",
         ephemeral=True,
     )
 
 
 @app_commands.command(
     name="setup",
-    description="Automatiškai sukuria visą ticket sistemą",
+    description="AutomatiÅ¡kai sukuria visÄ… ticket sistemÄ…",
 )
 @app_commands.describe(
-    support_role="Darbuotojų rolė, kuri matys ir atsakys į ticketus",
-    banner="Pagalbos centro bannerio paveikslėlis",
+    support_role="DarbuotojÅ³ rolÄ—, kuri matys ir atsakys Ä¯ ticketus",
+    banner="Pagalbos centro bannerio paveikslÄ—lis",
 )
 @app_commands.guilds(discord.Object(id=GUILD_ID))
 async def setup(
@@ -1585,9 +1585,9 @@ async def setup(
 
 @app_commands.command(
     name="ticket-panel",
-    description="Išsiunčia ticket sistemos panelę į šį kanalą",
+    description="IÅ¡siunÄia ticket sistemos panelÄ™ Ä¯ Å¡Ä¯ kanalÄ…",
 )
-@app_commands.describe(banner="Pagalbos centro bannerio paveikslėlis")
+@app_commands.describe(banner="Pagalbos centro bannerio paveikslÄ—lis")
 @app_commands.default_permissions(manage_channels=True)
 @app_commands.guilds(discord.Object(id=GUILD_ID))
 async def ticket_panel(
@@ -1595,12 +1595,12 @@ async def ticket_panel(
 ) -> None:
     if not interaction.permissions.manage_channels:
         await interaction.response.send_message(
-            "Šiai komandai reikia Manage Channels teisės.", ephemeral=True
+            "Å iai komandai reikia Manage Channels teisÄ—s.", ephemeral=True
         )
         return
     if not banner.content_type or not banner.content_type.startswith("image/"):
         await interaction.response.send_message(
-            "Banneris turi būti paveikslėlio failas.", ephemeral=True
+            "Banneris turi bÅ«ti paveikslÄ—lio failas.", ephemeral=True
         )
         return
     if interaction.channel is None:
@@ -1609,14 +1609,14 @@ async def ticket_panel(
     await interaction.response.defer(ephemeral=True)
     panel = await send_ticket_panel(interaction.channel, banner)
     await interaction.followup.send(
-        f"Ticket panelė sukurta: {panel.jump_url}", ephemeral=True
+        f"Ticket panelÄ— sukurta: {panel.jump_url}", ephemeral=True
     )
 
 
 @app_commands.command(
-    name="disband", description="Išformuoja gaują ir uždeda 3 dienų cooldown"
+    name="disband", description="IÅ¡formuoja gaujÄ… ir uÅ¾deda 3 dienÅ³ cooldown"
 )
-@app_commands.describe(gauja="Gaujos rolė, kurios narius reikia išformuoti")
+@app_commands.describe(gauja="Gaujos rolÄ—, kurios narius reikia iÅ¡formuoti")
 @app_commands.default_permissions(manage_roles=True)
 @app_commands.guilds(discord.Object(id=GUILD_ID))
 async def disband(interaction: discord.Interaction, gauja: discord.Role) -> None:
@@ -1624,9 +1624,9 @@ async def disband(interaction: discord.Interaction, gauja: discord.Role) -> None
 
 
 @app_commands.command(
-    name="disban", description="Išformuoja gaują ir uždeda 3 dienų cooldown"
+    name="disban", description="IÅ¡formuoja gaujÄ… ir uÅ¾deda 3 dienÅ³ cooldown"
 )
-@app_commands.describe(gauja="Gaujos rolė, kurios narius reikia išformuoti")
+@app_commands.describe(gauja="Gaujos rolÄ—, kurios narius reikia iÅ¡formuoti")
 @app_commands.default_permissions(manage_roles=True)
 @app_commands.guilds(discord.Object(id=GUILD_ID))
 async def disban(interaction: discord.Interaction, gauja: discord.Role) -> None:
@@ -1784,7 +1784,7 @@ async def iesko_nariu(
     embed.add_field(name="Apie gauja ir kontaktas", value=apie_gauja, inline=False)
     embed.set_footer(
         text=(
-            f"Skelbimas galioja iki {galioja_iki} • "
+            f"Skelbimas galioja iki {galioja_iki} â€¢ "
             f"Paskelbe: {interaction.user.display_name}"
         )
     )
