@@ -284,11 +284,6 @@ TICKET_TYPES = {
         "Pateikite skundą dėl gaujos ar jos narių.",
         "skundas",
     ),
-    "gang_application": (
-        "📋 Gaujų anketa",
-        "Pildykite paraišką naujai gaujai.",
-        "anketa",
-    ),
     "pov_request": (
         "🎥 POV Prašymas",
         "Paprašykite POV / klipo iš kitos gaujos.",
@@ -389,12 +384,6 @@ class TicketTypeSelect(discord.ui.Select):
                 description="Pateikti skundą dėl gaujos ar jos narių",
                 emoji="🚨",
                 value="gang_complaint",
-            ),
-            discord.SelectOption(
-                label="Gaujų anketa",
-                description="Pildyti paraišką naujai gaujai",
-                emoji="📋",
-                value="gang_application",
             ),
             discord.SelectOption(
                 label="POV Prašymas",
@@ -1310,12 +1299,20 @@ async def send_ticket_panel(
 ) -> discord.Message:
     banner_file = await banner.to_file(filename="ticket-banner.png")
     embed = discord.Embed(
-        title="Ticket pagalba",
-        description="Pasirinkite ticketo tipą iš meniu žemiau.",
+        title="ZENX GAUJU BILIETAI",
+        description=(
+            "**Sveikas! Jeigu atsidurete cia, greiciausiai turite klausimu arba "
+            "susidurete su problema, kuriai reikalinga musu pagalba.**\n\n"
+            "Noredami pradeti, pasirinkite viena is zemiau esanciu kategoriju, "
+            "kuri geriausiai atitinka jusu situacija. Kuo tiksliau aprasysite "
+            "savo problema, tuo greiciau ir efektyviau galesime jums padeti.\n\n"
+            "Musu administracijos komanda perziures jusu uzklausa ir susisieks "
+            "su jumis kaip imanoma greiciau.\n\n"
+            "**Dekojame uz kantrybe ir linkime malonios dienos! ❤️**"
+        ),
         color=discord.Color.red(),
     )
     embed.set_image(url="attachment://ticket-banner.png")
-    embed.set_footer(text="Atsakome per 24 valandas • Nepagrįsti ticketai uždaromi")
     return await channel.send(
         embed=embed,
         file=banner_file,
@@ -1497,14 +1494,18 @@ async def ticket_add_role(
     description="Automatiškai sukuria visą ticket sistemą",
 )
 @app_commands.describe(
-    support_role="Darbuotojų rolė, kuri matys ir atsakys į ticketus",
     banner="Pagalbos centro bannerio paveikslėlis",
+    kanalas="Kanalas, kuriame paskelbti ticket lentele",
+    kategorija="Kategorija, kurioje bus kuriami visi ticketai",
+    support_role="Darbuotojų rolė, kuri matys ir atsakys į ticketus",
 )
 @app_commands.guilds(discord.Object(id=GUILD_ID))
 async def setup_tickets(
     interaction: discord.Interaction,
-    support_role: discord.Role,
     banner: discord.Attachment,
+    kanalas: discord.TextChannel,
+    kategorija: discord.CategoryChannel,
+    support_role: discord.Role,
 ) -> None:
     if not (
         interaction.permissions.manage_channels
@@ -1527,18 +1528,6 @@ async def setup_tickets(
     if guild is None or guild.me is None:
         return
 
-    category = discord.utils.find(
-        lambda item: normalize(item.name) == "tickets", guild.categories
-    )
-    if category is None:
-        category = await guild.create_category(
-            "TICKETS", reason=f"Ticket sistemą sukūrė {interaction.user}"
-        )
-
-    panel_channel = discord.utils.find(
-        lambda item: normalize(item.name) == "ticket-pagalba",
-        guild.text_channels,
-    )
     panel_overwrites = {
         guild.default_role: discord.PermissionOverwrite(
             view_channel=True,
@@ -1558,30 +1547,21 @@ async def setup_tickets(
             attach_files=True,
         ),
     }
-    if panel_channel is None:
-        panel_channel = await guild.create_text_channel(
-            "ticket-pagalba",
-            category=category,
-            overwrites=panel_overwrites,
-            reason=f"Ticket sistemą sukūrė {interaction.user}",
-        )
-    else:
-        await panel_channel.edit(
-            category=category,
-            overwrites=panel_overwrites,
-            reason=f"Ticket sistemą atnaujino {interaction.user}",
-        )
+    await kanalas.edit(
+        overwrites=panel_overwrites,
+        reason=f"Ticket sistema atnaujino {interaction.user}",
+    )
 
     state["ticketConfigs"][str(guild.id)] = {
-        "categoryId": str(category.id),
-        "panelChannelId": str(panel_channel.id),
+        "categoryId": str(kategorija.id),
+        "panelChannelId": str(kanalas.id),
         "supportRoleId": str(support_role.id),
     }
     await save_state()
-    panel = await send_ticket_panel(panel_channel, banner)
+    panel = await send_ticket_panel(kanalas, banner)
     await interaction.followup.send(
         f"Ticket sistema paruošta: {panel.jump_url}\n"
-        f"Kategorija: `{category.name}` • Darbuotojai: {support_role.mention}",
+        f"Kategorija: `{kategorija.name}` • Darbuotojai: {support_role.mention}",
         ephemeral=True,
     )
 
@@ -1797,7 +1777,7 @@ async def iesko_nariu(
     embed.add_field(name="Gauju spalva", value=gaujos_spalva, inline=True)
     embed.add_field(
         name="Ieskoma nariu skaicius",
-        value=f"{ieskoma_nariu}",
+        value=f"mes turim {ieskoma_nariu}",
         inline=False,
     )
     embed.add_field(name="Reikalavimai", value=reikalavimai, inline=False)
@@ -1817,9 +1797,6 @@ async def iesko_nariu(
 
 
 bot.tree.add_command(setup_tickets)
-bot.tree.add_command(ticket_panel)
-bot.tree.add_command(ticket_add_member)
-bot.tree.add_command(ticket_add_role)
 bot.tree.add_command(pakeisti_spalva)
 bot.tree.add_command(checkcd)
 bot.tree.add_command(iesko_nariu)
