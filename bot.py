@@ -363,9 +363,8 @@ class TicketCloseView(discord.ui.View):
         super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="UÅ¾daryti ticket",
+        label="Uždaryti ticket",
         style=discord.ButtonStyle.danger,
-        emoji="ðŸ”’",
         custom_id="ticket:close:v1",
     )
     async def close_ticket(
@@ -486,12 +485,19 @@ class TicketTypeSelect(discord.ui.Select):
                     f"{interaction.user.mention}, aprašykite situaciją kuo išsamiau.\n\n"
                     f"{description}\n\nDarbuotojai atsakys, kai galės."
                 ),
-                color=discord.Color.red(),
+                color=discord.Color.default(),
             )
             content = interaction.user.mention
             if support_role:
                 content += f" {support_role.mention}"
-            await channel.send(content=content, embed=embed, view=TicketCloseView())
+            try:
+                await channel.send(content=content, embed=embed, view=TicketCloseView())
+            except discord.HTTPException:
+                await channel.send(
+                    f"{content}\n\n{title}\n{description}\n\n"
+                    "Aprašykite situaciją kuo išsamiau. Darbuotojai atsakys, kai galės.",
+                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                )
             await interaction.followup.send(
                 f"Ticket sukurtas: {channel.mention}", ephemeral=True
             )
