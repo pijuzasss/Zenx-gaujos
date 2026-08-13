@@ -409,66 +409,82 @@ class TicketTypeSelect(discord.ui.Select):
             return
         await interaction.response.defer(ephemeral=True)
 
-        existing = discord.utils.find(
-            lambda channel: isinstance(channel, discord.TextChannel)
-            and channel.topic is not None
-            and f"ticket-owner:{interaction.user.id}" in channel.topic,
-            guild.text_channels,
-        )
-        if existing:
+        try:
+            existing = discord.utils.find(
+                lambda channel: isinstance(channel, discord.TextChannel)
+                and channel.topic is not None
+                and f"ticket-owner:{interaction.user.id}" in channel.topic,
+                guild.text_channels,
+            )
+            if existing:
+                await interaction.followup.send(
+                    f"Jau turite atidarytą ticket: {existing.mention}", ephemeral=True
+                )
+                return
+
+            ticket_type = self.values[0]
+            title, description, channel_prefix = TICKET_TYPES[ticket_type]
+            category = await get_ticket_category(guild)
+            support_role = get_ticket_support_role(guild)
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                interaction.user: discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True,
+                    attach_files=True,
+                ),
+                guild.me: discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    manage_channels=True,
+                    read_message_history=True,
+                ),
+            }
+            if support_role:
+                overwrites[support_role] = discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True,
+                )
+
+            channel = await guild.create_text_channel(
+                f"{channel_prefix}-{safe_channel_part(interaction.user.display_name)}",
+                category=category,
+                overwrites=overwrites,
+                topic=f"ticket-owner:{interaction.user.id};type:{ticket_type}",
+                reason=f"Ticket sukūrė {interaction.user}",
+            )
+            embed = discord.Embed(
+                title=title,
+                description=(
+                    f"{interaction.user.mention}, aprašykite situaciją kuo išsamiau.\n\n"
+                    f"{description}\n\nDarbuotojai atsakys, kai galės."
+                ),
+                color=discord.Color.red(),
+            )
+            content = interaction.user.mention
+            if support_role:
+                content += f" {support_role.mention}"
+            await channel.send(content=content, embed=embed, view=TicketCloseView())
             await interaction.followup.send(
-                f"Jau turite atidarytÄ… ticket: {existing.mention}", ephemeral=True
+                f"Ticket sukurtas: {channel.mention}", ephemeral=True
             )
-            return
-
-        ticket_type = self.values[0]
-        title, description, channel_prefix = TICKET_TYPES[ticket_type]
-        category = await get_ticket_category(guild)
-        support_role = get_ticket_support_role(guild)
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            interaction.user: discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True,
-                attach_files=True,
-            ),
-            guild.me: discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                manage_channels=True,
-                read_message_history=True,
-            ),
-        }
-        if support_role:
-            overwrites[support_role] = discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True,
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "❌ Nepavyko sukurti ticket, nes botui trūksta teisių. "
+                "Reikia `Manage Channels`, `Send Messages`, `Embed Links`.",
+                ephemeral=True,
             )
-
-        channel = await guild.create_text_channel(
-            f"{channel_prefix}-{safe_channel_part(interaction.user.display_name)}",
-            category=category,
-            overwrites=overwrites,
-            topic=f"ticket-owner:{interaction.user.id};type:{ticket_type}",
-            reason=f"Ticket sukÅ«rÄ— {interaction.user}",
-        )
-        embed = discord.Embed(
-            title=title,
-            description=(
-                f"{interaction.user.mention}, apraÅ¡ykite situacijÄ… kuo iÅ¡samiau.\n\n"
-                f"{description}\n\nDarbuotojai atsakys, kai galÄ—s."
-            ),
-            color=discord.Color.red(),
-        )
-        content = interaction.user.mention
-        if support_role:
-            content += f" {support_role.mention}"
-        await channel.send(content=content, embed=embed, view=TicketCloseView())
-        await interaction.followup.send(
-            f"Ticket sukurtas: {channel.mention}", ephemeral=True
-        )
+        except discord.HTTPException as error:
+            await interaction.followup.send(
+                f"❌ Discord atmetė ticket kūrimą: `{error}`", ephemeral=True
+            )
+        except Exception as error:
+            await interaction.followup.send(
+                f"❌ Ticket klaida: `{type(error).__name__}: {error}`",
+                ephemeral=True,
+            )
 
 
 class TicketPanelView(discord.ui.View):
@@ -484,7 +500,7 @@ if hasattr(discord.ui, "LayoutView"):
         def __init__(self) -> None:
             super().__init__(timeout=None)
 
-            container = discord.ui.Container(accent_color=discord.Color.red())
+            container = discord.ui.Container()
             container.add_item(discord.ui.TextDisplay("## ZENX GAUJU BILIETAI"))
             container.add_item(
                 discord.ui.TextDisplay(
@@ -1351,7 +1367,7 @@ async def send_ticket_panel(
             "su jumis kaip imanoma greiciau.\n\n"
             "**Dekojame uz kantrybe ir linkime malonios dienos! ❤️**"
         ),
-        color=discord.Color(0x2B2D31),
+        color=discord.Color.default(),
     )
     embed.set_image(url="attachment://ticket-banner.png")
     return await channel.send(
