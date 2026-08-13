@@ -507,7 +507,7 @@ if hasattr(discord.ui, "LayoutView"):
                 )
             )
             container.add_item(discord.ui.Separator())
-            container.add_item(TicketTypeSelect())
+            container.add_item(discord.ui.ActionRow(TicketTypeSelect()))
 
             gallery = discord.ui.MediaGallery()
             gallery.add_item(media="attachment://ticket-banner.png")
