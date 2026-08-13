@@ -1526,42 +1526,70 @@ async def setup_tickets(
     await interaction.response.defer(ephemeral=True)
     guild = interaction.guild
     if guild is None or guild.me is None:
+        await interaction.followup.send("Nepavyko rasti serverio informacijos.", ephemeral=True)
         return
 
-    panel_overwrites = {
-        guild.default_role: discord.PermissionOverwrite(
-            view_channel=True,
-            send_messages=False,
-            read_message_history=True,
-        ),
-        support_role: discord.PermissionOverwrite(
-            view_channel=True,
-            send_messages=True,
-            read_message_history=True,
-        ),
-        guild.me: discord.PermissionOverwrite(
-            view_channel=True,
-            send_messages=True,
-            manage_channels=True,
-            read_message_history=True,
-            attach_files=True,
-        ),
-    }
-    await kanalas.edit(
-        overwrites=panel_overwrites,
-        reason=f"Ticket sistema atnaujino {interaction.user}",
+    await interaction.followup.send(
+        "⏳ Kuriu ticket sistemą... jeigu kažkas nepavyks, parašysiu klaidą čia.",
+        ephemeral=True,
     )
 
-    state["ticketConfigs"][str(guild.id)] = {
-        "categoryId": str(kategorija.id),
-        "panelChannelId": str(kanalas.id),
-        "supportRoleId": str(support_role.id),
-    }
-    await save_state()
-    panel = await send_ticket_panel(kanalas, banner)
+    try:
+        panel_overwrites = {
+            guild.default_role: discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=False,
+                read_message_history=True,
+            ),
+            support_role: discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+            ),
+            guild.me: discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                manage_channels=True,
+                read_message_history=True,
+                attach_files=True,
+            ),
+        }
+        await kanalas.edit(
+            overwrites=panel_overwrites,
+            reason=f"Ticket sistema atnaujino {interaction.user}",
+        )
+
+        state["ticketConfigs"][str(guild.id)] = {
+            "categoryId": str(kategorija.id),
+            "panelChannelId": str(kanalas.id),
+            "supportRoleId": str(support_role.id),
+        }
+        await save_state()
+        panel = await send_ticket_panel(kanalas, banner)
+    except discord.Forbidden:
+        await interaction.followup.send(
+            "❌ Nepavyko paruošti ticket sistemos, nes botui trūksta teisių. "
+            "Duok botui `Manage Channels`, `Send Messages`, `Embed Links` ir `Attach Files`.",
+            ephemeral=True,
+        )
+        return
+    except discord.HTTPException as error:
+        await interaction.followup.send(
+            f"❌ Discord atmetė veiksmą: `{error}`\n"
+            "Patikrink ar banneris nėra per didelis ir ar botas gali rašyti į pasirinktą kanalą.",
+            ephemeral=True,
+        )
+        return
+    except Exception as error:
+        await interaction.followup.send(
+            f"❌ Įvyko klaida setup metu: `{type(error).__name__}: {error}`",
+            ephemeral=True,
+        )
+        return
+
     await interaction.followup.send(
-        f"Ticket sistema paruoÅ¡ta: {panel.jump_url}\n"
-        f"Kategorija: `{kategorija.name}` â€¢ Darbuotojai: {support_role.mention}",
+        f"✅ Ticket sistema paruošta: {panel.jump_url}\n"
+        f"Kategorija: `{kategorija.name}` • Darbuotojai: {support_role.mention}",
         ephemeral=True,
     )
 
