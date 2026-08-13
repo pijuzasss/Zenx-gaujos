@@ -1893,7 +1893,7 @@ async def iesko_nariu(
     embed.add_field(name="Gauju spalva", value=gaujos_spalva, inline=True)
     embed.add_field(
         name="Ieskoma nariu skaicius",
-        value=f"mes turim {ieskoma_nariu}",
+        value=f"{ieskoma_nariu}",
         inline=False,
     )
     embed.add_field(name="Reikalavimai", value=reikalavimai, inline=False)
