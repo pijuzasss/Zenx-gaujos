@@ -382,19 +382,16 @@ class TicketTypeSelect(discord.ui.Select):
             discord.SelectOption(
                 label="GaujÅ³ skundas",
                 description="Pateikti skundÄ… dÄ—l gaujos ar jos nariÅ³",
-                emoji="ðŸš¨",
                 value="gang_complaint",
             ),
             discord.SelectOption(
                 label="POV PraÅ¡ymas",
                 description="PapraÅ¡yti POV / klipo iÅ¡ kitos gaujos",
-                emoji="ðŸŽ¥",
                 value="pov_request",
             ),
             discord.SelectOption(
                 label="Pagalba",
                 description="Klausimai ir kita pagalba",
-                emoji="â“",
                 value="help",
             ),
         ]
