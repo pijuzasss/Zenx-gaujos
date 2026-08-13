@@ -477,6 +477,45 @@ class TicketPanelView(discord.ui.View):
         self.add_item(TicketTypeSelect())
 
 
+TicketPanelLayoutView = None
+if hasattr(discord.ui, "LayoutView"):
+
+    class TicketPanelLayoutView(discord.ui.LayoutView):  # type: ignore[misc, no-redef]
+        def __init__(self) -> None:
+            super().__init__(timeout=None)
+
+            container = discord.ui.Container(accent_color=discord.Color.red())
+            container.add_item(discord.ui.TextDisplay("## ZENX GAUJU BILIETAI"))
+            container.add_item(
+                discord.ui.TextDisplay(
+                    "**Sveikas! Jeigu atsidurete cia, greiciausiai turite klausimu arba "
+                    "susidurete su problema, kuriai reikalinga musu pagalba.**"
+                )
+            )
+            container.add_item(
+                discord.ui.TextDisplay(
+                    "> Noredami pradeti, pasirinkite viena is zemiau esanciu kategoriju, "
+                    "kuri geriausiai atitinka jusu situacija. Kuo tiksliau aprasysite "
+                    "savo problema, tuo greiciau ir efektyviau galesime jums padeti.\n"
+                    "> Musu administracijos komanda perziures jusu uzklausa ir susisieks "
+                    "su jumis kaip imanoma greiciau."
+                )
+            )
+            container.add_item(
+                discord.ui.TextDisplay(
+                    "**Dekojame uz kantrybe ir linkime malonios dienos! ❤️**"
+                )
+            )
+            container.add_item(discord.ui.Separator())
+            container.add_item(TicketTypeSelect())
+
+            gallery = discord.ui.MediaGallery()
+            gallery.add_item(media="attachment://ticket-banner.png")
+            container.add_item(gallery)
+
+            self.add_item(container)
+
+
 def ticket_access(interaction: discord.Interaction) -> tuple[bool, bool, bool]:
     """GrÄ…Å¾ina: ar ticket kanalas, ar autorius, ar support/kanalÅ³ valdytojas."""
     channel = interaction.channel
@@ -722,6 +761,8 @@ async def process_disband_jobs() -> None:
 async def on_ready() -> None:
     global persistent_views_registered, cooldown_sweeper_started
     if not persistent_views_registered:
+        if TicketPanelLayoutView is not None:
+            bot.add_view(TicketPanelLayoutView())
         bot.add_view(TicketPanelView())
         bot.add_view(TicketCloseView())
         persistent_views_registered = True
@@ -1295,6 +1336,9 @@ async def send_ticket_panel(
     channel: discord.abc.Messageable, banner: discord.Attachment
 ) -> discord.Message:
     banner_file = await banner.to_file(filename="ticket-banner.png")
+    if TicketPanelLayoutView is not None:
+        return await channel.send(file=banner_file, view=TicketPanelLayoutView())
+
     embed = discord.Embed(
         title="ZENX GAUJU BILIETAI",
         description=(
