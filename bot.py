@@ -61,8 +61,33 @@ OLD_DATA_FILE = DATA_DIRECTORY / "cooldowns.json"
 
 def normalize(text: str) -> str:
     small_caps = str.maketrans(
-        "á´€Ê™á´„á´…á´‡êœ°É¢ÊœÉªá´Šá´‹ÊŸá´É´á´á´˜Ç«Ê€êœ±á´›á´œá´ á´¡xÊá´¢",
-        "abcdefghijklmnopqrstuvwxyz",
+        {
+            "ᴀ": "a",
+            "ʙ": "b",
+            "ᴄ": "c",
+            "ᴅ": "d",
+            "ᴇ": "e",
+            "ꜰ": "f",
+            "ɢ": "g",
+            "ʜ": "h",
+            "ɪ": "i",
+            "ᴊ": "j",
+            "ᴋ": "k",
+            "ʟ": "l",
+            "ᴍ": "m",
+            "ɴ": "n",
+            "ᴏ": "o",
+            "ᴘ": "p",
+            "ǫ": "q",
+            "ʀ": "r",
+            "ꜱ": "s",
+            "ᴛ": "t",
+            "ᴜ": "u",
+            "ᴠ": "v",
+            "ᴡ": "w",
+            "ʏ": "y",
+            "ᴢ": "z",
+        }
     )
     decomposed = unicodedata.normalize("NFKD", text.casefold()).translate(small_caps)
     result = []
@@ -280,18 +305,18 @@ async def reply_panel(
 
 TICKET_TYPES = {
     "gang_complaint": (
-        "ðŸš¨ GaujÅ³ skundas",
-        "Pateikite skundÄ… dÄ—l gaujos ar jos nariÅ³.",
+        "Gaujų skundas",
+        "Pateikite skundą dėl gaujos ar jos narių.",
         "skundas",
     ),
     "pov_request": (
-        "ðŸŽ¥ POV PraÅ¡ymas",
-        "PapraÅ¡ykite POV / klipo iÅ¡ kitos gaujos.",
+        "POV Prašymas",
+        "Paprašykite POV / klipo iš kitos gaujos.",
         "pov",
     ),
     "help": (
-        "â“ Pagalba",
-        "UÅ¾duokite klausimÄ… arba papraÅ¡ykite pagalbos.",
+        "Pagalba",
+        "Užduokite klausimą arba paprašykite pagalbos.",
         "pagalba",
     ),
 }
