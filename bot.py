@@ -380,13 +380,13 @@ class TicketTypeSelect(discord.ui.Select):
     def __init__(self) -> None:
         options = [
             discord.SelectOption(
-                label="GaujÅ³ skundas",
-                description="Pateikti skundÄ… dÄ—l gaujos ar jos nariÅ³",
+                label="Gaujų skundas",
+                description="Pateikti skundą dėl gaujos ar jos narių",
                 value="gang_complaint",
             ),
             discord.SelectOption(
-                label="POV PraÅ¡ymas",
-                description="PapraÅ¡yti POV / klipo iÅ¡ kitos gaujos",
+                label="POV Prašymas",
+                description="Paprašyti POV / klipo iš kitos gaujos",
                 value="pov_request",
             ),
             discord.SelectOption(
@@ -396,7 +396,7 @@ class TicketTypeSelect(discord.ui.Select):
             ),
         ]
         super().__init__(
-            placeholder="Pasirinkite kategorija",
+            placeholder="Pasirinkite kategoriją",
             min_values=1,
             max_values=1,
             options=options,
@@ -1309,7 +1309,6 @@ async def send_ticket_panel(
         ),
         color=discord.Color(0x2B2D31),
     )
-    embed.set_image(url="attachment://ticket-banner.png")
     return await channel.send(
         embed=embed,
         file=banner_file,
