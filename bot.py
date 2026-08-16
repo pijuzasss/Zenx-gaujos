@@ -25,7 +25,9 @@ BLACKLIST_ROLE_NAME = os.getenv("BLACKLIST_ROLE_TEXT", "black list")
 BLACKLIST_ROLE_ID = os.getenv("BLACKLIST_ROLE_ID", "").strip()
 COOLDOWN_ROLE_NAME = os.getenv("COOLDOWN_ROLE_NAME", "3d cooldown")
 COOLDOWN_ROLE_ID = os.getenv("COOLDOWN_ROLE_ID", "").strip()
-COOLDOWN_SECONDS = float(os.getenv("COOLDOWN_HOURS", "72")) * 3600
+COOLDOWN_HOURS = float(os.getenv("COOLDOWN_HOURS", "36"))
+COOLDOWN_SECONDS = COOLDOWN_HOURS * 3600
+COOLDOWN_LABEL = "1d 12h" if COOLDOWN_HOURS == 36 else f"{COOLDOWN_HOURS:g}h"
 TICKET_CATEGORY_ID = os.getenv("TICKET_CATEGORY_ID", "").strip()
 TICKET_SUPPORT_ROLE_ID = os.getenv("TICKET_SUPPORT_ROLE_ID", "").strip()
 ROLE_REQUESTS_CHANNEL_ID = os.getenv("ROLE_REQUESTS_CHANNEL_ID", "").strip()
@@ -249,7 +251,7 @@ async def get_or_create_cooldown_role(guild: discord.Guild) -> discord.Role:
     if role:
         return role
     return await guild.create_role(
-        name=COOLDOWN_ROLE_NAME, reason="3 dienÅ³ gaujos cooldown rolÄ—"
+        name=COOLDOWN_ROLE_NAME, reason=f"{COOLDOWN_LABEL} gaujos cooldown rolė"
     )
 
 
@@ -395,7 +397,7 @@ class TicketCloseView(discord.ui.View):
             )
             return
 
-        await interaction.response.send_message("ðŸ”’ Ticket uÅ¾daromas po 3 sekundÅ¾iÅ³.")
+        await interaction.response.send_message("Ticket uždaromas po 3 sekundžių.")
         await asyncio.sleep(3)
         await channel.delete(reason=f"Ticket uÅ¾darÄ— {interaction.user}")
 
@@ -671,7 +673,7 @@ async def expire_cooldown_now(guild_id: int, user_id: int, expires_at: float) ->
             roles_to_remove.append(role)
 
     if member and roles_to_remove:
-        await member.remove_roles(*roles_to_remove, reason="3 dienu cooldown baigesi")
+        await member.remove_roles(*roles_to_remove, reason=f"{COOLDOWN_LABEL} cooldown baigėsi")
 
     state["cooldowns"].pop(key, None)
     await save_state()
@@ -698,7 +700,7 @@ async def cooldown_worker(guild_id: int, user_id: int, expires_at: float) -> Non
                 member = None
         role = guild.get_role(int(entry["roleId"]))
         if member and role and role in member.roles:
-            await member.remove_roles(role, reason="3 dienÅ³ cooldown baigÄ—si")
+            await member.remove_roles(role, reason=f"{COOLDOWN_LABEL} cooldown baigėsi")
 
         state["cooldowns"].pop(key, None)
         await save_state()
@@ -789,7 +791,7 @@ async def process_disband_jobs() -> None:
                         if cooldown_role not in member.roles:
                             await member.add_roles(
                                 cooldown_role,
-                            reason="3 dienÅ³ cooldown po gaujos iÅ¡formavimo",
+                            reason=f"{COOLDOWN_LABEL} cooldown po gaujos išformavimo",
                             )
                     await asyncio.wait_for(disband_member(), timeout=30)
                     schedule_cooldown(guild.id, user_id, job["expiresAt"])
@@ -960,7 +962,7 @@ async def on_member_update(before: discord.Member, after: discord.Member) -> Non
         }
         await save_state()
         schedule_cooldown(after.guild.id, after.id, expires_at)
-        print(f"Nariui {after} automatiÅ¡kai pradÄ—tas 3 dienÅ³ cooldown.")
+        print(f"Nariui {after} automatiškai pradėtas {COOLDOWN_LABEL} cooldown.")
 
     entry = state["cooldowns"].get(key)
     if not entry:
@@ -1031,7 +1033,7 @@ async def on_message(message: discord.Message) -> None:
         if gang_role is None:
             await reply_panel(
                 message,
-                f"âŒ Neradau gaujos rolÄ—s pagal pavadinimÄ… `{ ' '.join(gang_keywords) }`.",
+                f"❌ Neradau gaujos rolės pagal pavadinimą `{ ' '.join(gang_keywords) }`.",
                 False,
             )
             return
@@ -1041,7 +1043,7 @@ async def on_message(message: discord.Message) -> None:
     if gang_role is None:
         await reply_panel(
             message,
-            "âŒ Neradau gaujos rolÄ—s. ParaÅ¡yk gaujos pavadinimÄ…, pvz. `@narys on raudoni`.",
+            "❌ Neradau gaujos rolės. Parašyk gaujos pavadinimą, pvz. `@narys on raudoni`.",
             False,
         )
         return
@@ -1051,7 +1053,7 @@ async def on_message(message: discord.Message) -> None:
         if gang_role not in target.roles:
             await reply_panel(
                 message,
-                "âŒ Å is narys neturi tokios paÄios gaujos rolÄ—s, todÄ—l niekas nebuvo nuimta.",
+                "❌ Šis narys neturi tokios pačios gaujos rolės, todėl niekas nebuvo nuimta.",
                 False,
             )
             return
@@ -1091,17 +1093,17 @@ async def on_message(message: discord.Message) -> None:
                 )
             await target.add_roles(
                 cooldown_role,
-                reason="3 dienÅ³ cooldown po paÅ¡alinimo iÅ¡ gaujos",
+                reason=f"{COOLDOWN_LABEL} cooldown po pašalinimo iš gaujos",
             )
             schedule_cooldown(message.guild.id, target.id, expires_at)
             await reply_panel(
                 message,
-                f"âœ… {target.mention} pasalintas is {role_display_name(gang_role)}. {gang_member_count_text(gang_role)}",
+                f"✅ {target.mention} pašalintas iš {role_display_name(gang_role)}. {gang_member_count_text(gang_role)}",
             )
         except discord.HTTPException:
             await reply_panel(
                 message,
-                "âŒ Nepavyko pakeisti roliÅ³. Patikrink boto teises ir roliÅ³ hierarchijÄ….",
+                "❌ Nepavyko pakeisti rolių. Patikrink boto teises ir rolių hierarchiją.",
                 False,
             )
         return
@@ -1113,7 +1115,7 @@ async def on_message(message: discord.Message) -> None:
     if not author_is_boss and not author_is_right_hand:
         await reply_panel(
             message,
-            "âŒ `on` komandÄ… gali naudoti tik gaujos boss arba `des.ranka` rolÄ™ turintis narys.",
+            "❌ `on` komandą gali naudoti tik gaujos boss arba `des.ranka` rolę turintis narys.",
             False,
         )
         return
@@ -1122,7 +1124,7 @@ async def on_message(message: discord.Message) -> None:
     if gang_role not in author_gang_roles:
         await reply_panel(
             message,
-            "âŒ Gali priimti narius tik Ä¯ savo gaujÄ….",
+            "❌ Gali priimti narius tik į savo gaują.",
             False,
         )
         return
@@ -1150,14 +1152,14 @@ async def on_message(message: discord.Message) -> None:
         cooldown_entry = None
 
     if has_cooldown_role:
-        await reply_panel(message, "âŒ Å iam nariui dar aktyvus 3 dienÅ³ cooldown.", False)
+        await reply_panel(message, f"❌ Šiam nariui dar aktyvus {COOLDOWN_LABEL} cooldown.", False)
         return
 
     blacklist_role = discord.utils.find(
         role_is_blacklist, target.roles
     )
     if blacklist_role:
-        await reply_panel(message, "âŒ Å is narys turi black list rolÄ™.", False)
+        await reply_panel(message, "❌ Šis narys turi black list rolę.", False)
         return
 
     target_gang_roles = [
@@ -1170,13 +1172,13 @@ async def on_message(message: discord.Message) -> None:
     if different_gang_roles:
         await reply_panel(
             message,
-            "âŒ Å is narys jau turi kitos gaujos rolÄ™, todÄ—l jam nieko neuÅ¾dÄ—jau.",
+            "❌ Šis narys jau turi kitos gaujos rolę, todėl jam nieko neuždėjau.",
             False,
         )
         return
 
     if not right_hand_requested and gang_role in target.roles:
-        await reply_panel(message, f"âŒ {target.mention} jau turi {role_display_name(gang_role)} role.", False)
+        await reply_panel(message, f"❌ {target.mention} jau turi {role_display_name(gang_role)} rolę.", False)
         return
 
     roles_to_add = [gang_role]
@@ -1194,7 +1196,7 @@ async def on_message(message: discord.Message) -> None:
         if right_hand_role is None:
             await reply_panel(
                 message,
-                f"âŒ Neradau `{RIGHT_HAND_ROLE_NAME}` rolÄ—s.",
+                f"❌ Neradau `{RIGHT_HAND_ROLE_NAME}` rolės.",
                 False,
             )
             return
@@ -1210,12 +1212,12 @@ async def on_message(message: discord.Message) -> None:
         role_names = ", ".join(role_display_name(role) for role in roles_to_add)
         await reply_panel(
             message,
-            f"âœ… {target.mention} sekmingai pridetas i {role_names}. {gang_member_count_text(gang_role)}",
+            f"✅ {target.mention} sėkmingai pridėtas į {role_names}. {gang_member_count_text(gang_role)}",
         )
     except discord.HTTPException:
         await reply_panel(
             message,
-            "âŒ Nepavyko uÅ¾dÄ—ti rolÄ—s. Patikrink boto teises ir roliÅ³ hierarchijÄ….",
+            "❌ Nepavyko uždėti rolės. Patikrink boto teises ir rolių hierarchiją.",
             False,
         )
 
@@ -1307,8 +1309,8 @@ class ColorChangeConfirmView(discord.ui.View):
         )
         await interaction.edit_original_response(
             content=(
-                f"âœ… Perkelta nariÅ³: **{completed}**. "
-                f"`{old_role.name}` â†’ `{new_role.name}`.\n"
+                f"✅ Perkelta narių: **{completed}**. "
+                f"`{old_role.name}` → `{new_role.name}`.\n"
                 "Boss, des.ranka ir visos kitos rolÄ—s paliktos nepakeistos."
                 f"{failure_text}"
             ),
@@ -1316,7 +1318,7 @@ class ColorChangeConfirmView(discord.ui.View):
             view=None,
         )
 
-    @discord.ui.button(label="AtÅ¡aukti", style=discord.ButtonStyle.secondary, emoji="âœ–ï¸")
+    @discord.ui.button(label="Atšaukti", style=discord.ButtonStyle.secondary)
     async def cancel(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -1495,8 +1497,8 @@ async def pakeisti_spalva(
     )
     await status_message.edit(
         content=(
-        f"âœ… Perkelta nariÅ³: **{completed}**. "
-        f"`{sena_gauja.name}` â†’ `{nauja_gauja.name}`. "
+        f"✅ Perkelta narių: **{completed}**. "
+        f"`{sena_gauja.name}` → `{nauja_gauja.name}`. "
         f"Boss, des.ranka ir kitos rolÄ—s paliktos.{failure_text}"
         )
     )
@@ -1532,7 +1534,7 @@ async def ticket_add_member(
         reason=f"Ä® ticket pridÄ—jo {interaction.user}",
     )
     await interaction.response.send_message(
-        f"âœ… {member.mention} pridÄ—tas Ä¯ ticket."
+        f"✅ {member.mention} pridėtas į ticket."
     )
 
 
@@ -1572,7 +1574,7 @@ async def ticket_add_role(
         reason=f"Ä® ticket rolÄ™ pridÄ—jo {interaction.user}",
     )
     await interaction.response.send_message(
-        f"âœ… RolÄ— {role.mention} pridÄ—ta Ä¯ ticket.",
+        f"✅ Rolė {role.mention} pridėta į ticket.",
         allowed_mentions=discord.AllowedMentions(roles=False),
     )
 
@@ -1730,7 +1732,7 @@ async def ticket_panel(
 
 
 @app_commands.command(
-    name="disband", description="IÅ¡formuoja gaujÄ… ir uÅ¾deda 3 dienÅ³ cooldown"
+    name="disband", description=f"Išformuoja gaują ir uždeda {COOLDOWN_LABEL} cooldown"
 )
 @app_commands.describe(gauja="Gaujos rolÄ—, kurios narius reikia iÅ¡formuoti")
 @app_commands.default_permissions(manage_roles=True)
@@ -1740,7 +1742,7 @@ async def disband(interaction: discord.Interaction, gauja: discord.Role) -> None
 
 
 @app_commands.command(
-    name="disban", description="IÅ¡formuoja gaujÄ… ir uÅ¾deda 3 dienÅ³ cooldown"
+    name="disban", description=f"Išformuoja gaują ir uždeda {COOLDOWN_LABEL} cooldown"
 )
 @app_commands.describe(gauja="Gaujos rolÄ—, kurios narius reikia iÅ¡formuoti")
 @app_commands.default_permissions(manage_roles=True)
@@ -1766,7 +1768,7 @@ def format_remaining(seconds: float) -> str:
 
 @app_commands.command(
     name="checkcd",
-    description="Parodo aktyvius 3d cooldown narius ir likusi laika",
+    description="Parodo aktyvius cooldown narius ir likusį laiką",
 )
 @app_commands.default_permissions(manage_roles=True)
 @app_commands.guilds(discord.Object(id=GUILD_ID))
@@ -1816,7 +1818,7 @@ async def checkcd(interaction: discord.Interaction) -> None:
         await save_state()
 
     embed = discord.Embed(
-        title="Aktyvus 3d cooldown",
+        title=f"Aktyvus {COOLDOWN_LABEL} cooldown",
         color=discord.Color.orange(),
     )
     if lines:
